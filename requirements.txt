@@ -13,7 +13,9 @@ cryptography==46.0.3
 daphne==4.2.1
 decorator==5.2.1
 dj-database-url==3.0.1
-Django==6.0
+dj-rest-auth==7.0.1
+Django==5.2.9
+django-allauth==65.13.1
 django-cors-headers==4.9.0
 django-debug-toolbar==6.1.0
 django-extensions==4.1
