@@ -34,7 +34,6 @@ THIRD_PARTY_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'allauth.socialaccount.providers.microsoft'
     'dj_rest_auth',
     'dj_rest_auth.registration',
 ]
@@ -61,6 +60,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware'
 ]
 
 ROOT_URLCONF = 'choirbackend.urls'
@@ -157,11 +157,6 @@ SOCIALACCOUNT_PROVIDERS = {
         'AUTH_PARAMS': {
             'access_type': 'online',
         }
-    },
-    'microsoft': {
-        'SCOPE': [
-            'User.Read',
-        ],
     }
 }
 
@@ -170,6 +165,7 @@ REST_AUTH = {
     'USE_JWT': True,
     'JWT_AUTH_HTTPONLY': False,
     'JWT_AUTH_COOKIE': None,
+    'TOKEN_MODEL': None,
     'USER_DETAILS_SERIALIZER': 'apps.authentication.serializers.UserSerializer',
     'REGISTER_SERIALIZER': 'apps.authentication.serializers.RegisterSerializer',
 }
