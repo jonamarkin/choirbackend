@@ -75,3 +75,4 @@ uritemplate==4.2.0
 wcwidth==0.2.14
 zope.interface==8.1.1
 requests>=2.31.0
+gunicorn>=21.2.0
