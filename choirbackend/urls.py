@@ -25,6 +25,10 @@ from drf_spectacular.views import (
 )
 
 
+v1_0_patterns = [
+    path('auth/', include('authentication.urls')),
+]
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -34,7 +38,7 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 
     # API endpoints
-    path('api/v1/auth/', include('apps.authentication.urls')),
+    path('api/v1/', include((v1_0_patterns, 'v1.0'), namespace='v1.0')), # All API Endpoints (Should be in the v1_0_patterns list)
     path('api/v1/auth/', include('allauth.urls')),  # For social auth callbacks
 ]
 

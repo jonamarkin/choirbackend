@@ -235,35 +235,36 @@ def member_list(request):
 - Edge cases
 
 **Test Structure:**
+
 ```python
 # apps/members/tests/test_models.py
 import pytest
-from apps.members.models import Member
-from apps.core.models import Organization
+from members import Member
+from core.models import Organization
 
 
 @pytest.mark.django_db
 class TestMemberModel:
-    """Test suite for Member model."""
-    
-    def test_create_member(self):
-        """Test creating a member successfully."""
-        org = Organization.objects.create(
-            name="Test Choir",
-            slug="test-choir"
-        )
-        member = Member.objects.create(
-            organization=org,
-            full_name="John Doe",
-            voice_part="tenor"
-        )
-        assert member.full_name == "John Doe"
-        assert member.organization == org
-    
-    def test_member_str_representation(self):
-        """Test string representation of member."""
-        # Test implementation
-        pass
+   """Test suite for Member model."""
+
+   def test_create_member(self):
+      """Test creating a member successfully."""
+      org = Organization.objects.create(
+         name="Test Choir",
+         slug="test-choir"
+      )
+      member = Member.objects.create(
+         organization=org,
+         full_name="John Doe",
+         voice_part="tenor"
+      )
+      assert member.full_name == "John Doe"
+      assert member.organization == org
+
+   def test_member_str_representation(self):
+      """Test string representation of member."""
+      # Test implementation
+      pass
 ```
 
 **Running Tests:**
