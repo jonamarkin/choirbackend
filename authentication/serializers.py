@@ -60,7 +60,7 @@ class RegisterSerializer(BaseRegisterSerializer):
         # Handle organization invite code
         org_code = self.validated_data.get('organization_code')
         if org_code:
-            from apps.core.models import Organization
+            from core.models import Organization
             try:
                 org = Organization.objects.get(slug=org_code)
                 user.organization = org
@@ -88,6 +88,15 @@ class LoginSerializer(serializers.Serializer):
 
         return attrs
 
+class LogoutSerializer(serializers.Serializer):
+    """Serializer for logout request"""
+    refresh = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        refresh = attrs.get('refresh')
+        if not refresh:
+            raise serializers.ValidationError("Refresh token required")
+        return attrs
 
 class PasswordChangeSerializer(serializers.Serializer):
     """Serializer for password change"""

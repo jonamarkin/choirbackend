@@ -11,7 +11,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
 # Application definition
-DJANGO_APPS = [
+INSTALLED_APPS = [
     'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -19,36 +19,29 @@ DJANGO_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites'
-]
+    'django.contrib.sites',
 
-THIRD_PARTY_APPS = [
+    # Third Party Apps
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
     'django_filters',
     'drf_spectacular',
-
-    #Authentication
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
-    'dj_rest_auth',
-    'dj_rest_auth.registration',
+
+    # Local Apps
+    'core',
+    'authentication',
+    'members',
+    'subscriptions',
+    'attendance',
+    'finance',
+    'reports',
+
 ]
 
-LOCAL_APPS = [
-    'apps.core.apps.CoreConfig',
-    'apps.authentication.apps.AuthenticationConfig',
-    'apps.members.apps.MembersConfig',
-    'apps.subscriptions.apps.SubscriptionsConfig',
-    'apps.attendance.apps.AttendanceConfig',
-    'apps.finance.apps.FinanceConfig',
-    'apps.reports.apps.ReportsConfig',
-]
-
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 ASGI_APPLICATION = 'choirbackend.asgi.application'
 
 MIDDLEWARE = [
@@ -88,7 +81,7 @@ DATABASES = {
     'default': dj_database_url.config(
         default=config('DATABASE_URL'),
         conn_max_age=600,
-        
+
     )
 }
 
@@ -139,7 +132,7 @@ REST_FRAMEWORK = {
 
 SITE_ID = 1
 
-#Allauth Settings
+# Allauth Settings
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
@@ -166,8 +159,8 @@ REST_AUTH = {
     'JWT_AUTH_HTTPONLY': False,
     'JWT_AUTH_COOKIE': None,
     'TOKEN_MODEL': None,
-    'USER_DETAILS_SERIALIZER': 'apps.authentication.serializers.UserSerializer',
-    'REGISTER_SERIALIZER': 'apps.authentication.serializers.RegisterSerializer',
+    'USER_DETAILS_SERIALIZER': 'authentication.serializers.UserSerializer',
+    'REGISTER_SERIALIZER': 'authentication.serializers.RegisterSerializer',
 }
 
 # JWT Settings
