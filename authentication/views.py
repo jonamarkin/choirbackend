@@ -139,7 +139,7 @@ class AuthViewSet(viewsets.ViewSet):
 
     @extend_schema(request=UserSerializer, responses={200: UserSerializer}, description="Update current user profile")
     @action(detail=False, methods=['put', 'patch'])
-    def update_profile(request):
+    def update_profile(self, request):
         """
         Update current user profile.
 
@@ -168,7 +168,7 @@ class AuthViewSet(viewsets.ViewSet):
 
     @extend_schema(request=PasswordChangeSerializer, responses={200: None}, description="Change user password")
     @action(detail=False, methods=['post'])
-    def change_password(request):
+    def change_password(self, request):
         """
         Change user password.
 
@@ -202,7 +202,7 @@ class AuthViewSet(viewsets.ViewSet):
 
     @extend_schema(responses={200: SocialAuthConnectionSerializer(many=True)}, description="Get user's connected social accounts")
     @action(detail=False, methods=['get'])
-    def social_connections(request):
+    def social_connections(self, request):
         """
         Get user's connected social accounts.
 
