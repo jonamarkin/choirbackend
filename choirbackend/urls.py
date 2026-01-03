@@ -39,7 +39,7 @@ urlpatterns = [
 
     # API endpoints
     path('api/v1/', include((v1_0_patterns, 'v1.0'), namespace='v1.0')), # All API Endpoints (Should be in the v1_0_patterns list)
-    path('accounts/', include('allauth.urls')), 
+    # path('accounts/', include('allauth.urls')), 
 ]
 
 
