@@ -126,7 +126,7 @@ class AuthViewSet(viewsets.ViewSet):
 
     @extend_schema(responses={200: UserSerializer}, description="Get current user information")
     @action(detail=False, methods=['get'])
-    def me_view(self, request):
+    def me(self, request):
         """
         Get current user information.
 
