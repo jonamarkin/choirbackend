@@ -134,7 +134,7 @@ SITE_ID = 1
 
 # Allauth Settings
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_REQUIRED = False
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_EMAIL_VERIFICATION = 'optional'
 ACCOUNT_UNIQUE_EMAIL = True
@@ -187,4 +187,32 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'VocalEssence API',
     'DESCRIPTION': 'Chorale Management Platform API',
     'VERSION': '1.0.0',
+}
+
+# Hubtel Payment Gateway Configuration
+import base64
+
+HUBTEL_CONFIG = {
+    # API Credentials
+    'API_ID': config('HUBTEL_API_ID', default=''),
+    'API_KEY': config('HUBTEL_API_KEY', default=''),
+    'MERCHANT_ACCOUNT_NUMBER': config('HUBTEL_MERCHANT_ACCOUNT_NUMBER', default=''),
+
+    # API URLs
+    'PAYMENT_API_URL': 'https://payproxyapi.hubtel.com/items/initiate',
+    'STATUS_API_URL': 'https://api-txnstatus.hubtel.com/transactions',
+
+    # Webhook URLs
+    'CALLBACK_URL': config('HUBTEL_CALLBACK_URL', default=''),
+    'RETURN_URL': config('HUBTEL_RETURN_URL', default=''),
+    'CANCELLATION_URL': config('HUBTEL_CANCELLATION_URL', default=''),
+
+    # IP Whitelist
+    'WHITELISTED_IPS': [
+        ip.strip() for ip in config('HUBTEL_WHITELISTED_IPS', default='').split(',') if ip.strip()
+    ],
+
+    # Payment settings
+    'PAYMENT_EXPIRY_MINUTES': 5,  # Hubtel's 5-minute rule for status checks
+    'MAX_CLIENT_REFERENCE_LENGTH': 32,  # Hubtel's max limit for clientReference
 }

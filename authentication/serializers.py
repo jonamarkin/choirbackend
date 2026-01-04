@@ -6,6 +6,20 @@ from .models import SocialAuthConnection
 User = get_user_model()
 
 
+class UserSubscriptionSummarySerializer(serializers.Serializer):
+    """Lightweight serializer for user's subscription summary"""
+    id = serializers.UUIDField(read_only=True)
+    subscription_id = serializers.UUIDField(source='subscription.id', read_only=True)
+    subscription_name = serializers.CharField(source='subscription.name', read_only=True)
+    amount = serializers.DecimalField(source='subscription.amount', max_digits=10, decimal_places=2, read_only=True)
+    start_date = serializers.DateField(read_only=True)
+    end_date = serializers.DateField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    payment_date = serializers.DateTimeField(read_only=True)
+    is_currently_active = serializers.BooleanField(read_only=True)
+
+
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model"""
     organization_name = serializers.CharField(
@@ -14,6 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     has_organization = serializers.BooleanField(read_only=True)
+    subscriptions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -21,12 +36,18 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'phone_number', 'profile_picture', 'role', 'auth_method',
             'organization', 'organization_name', 'has_organization',
-            'email_verified', 'is_active', 'created_at', 'last_login_at'
+            'email_verified', 'is_active', 'subscriptions',
+            'created_at', 'last_login_at'
         ]
         read_only_fields = [
             'id', 'created_at', 'last_login_at', 'email_verified',
             'auth_method'
         ]
+
+    def get_subscriptions(self, obj):
+        """Get user's subscriptions"""
+        user_subscriptions = obj.user_subscriptions.select_related('subscription').all()
+        return UserSubscriptionSummarySerializer(user_subscriptions, many=True).data
 
 
 class RegisterSerializer(BaseRegisterSerializer):
