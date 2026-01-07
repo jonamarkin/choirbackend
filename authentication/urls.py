@@ -15,6 +15,8 @@ urlpatterns = [
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
     # Registration (from dj-rest-auth)
+    # Registration (custom view to disable auth check)
+    path('register/', views.CustomRegisterView.as_view(), name='rest_register'),
     path('register/', include('dj_rest_auth.registration.urls')),
     
     # Password reset ONLY

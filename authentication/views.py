@@ -1,6 +1,6 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, action, authentication_classes
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -10,7 +10,11 @@ from django.utils import timezone
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
 from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2Adapter
-from dj_rest_auth.registration.views import SocialLoginView
+from dj_rest_auth.registration.views import SocialLoginView, RegisterView
+
+class CustomRegisterView(RegisterView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
 from .serializers import (
     LoginSerializer, UserSerializer, PasswordChangeSerializer,
@@ -32,7 +36,7 @@ class AuthViewSet(viewsets.ViewSet):
 
     @extend_schema(request=LoginSerializer, responses={200: UserSerializer},
                    description="Login with email/username and password")
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], authentication_classes=[])
     def login(self, request):
         """
         Login with email/username and password.
@@ -63,15 +67,44 @@ class AuthViewSet(viewsets.ViewSet):
         user = authenticate(username=username, password=password)
 
         if user is None:
+            # Check if it was because of inactive user
+            try:
+                # We partially resolved user above, or try again
+                user_obj = None
+                if email:
+                    user_obj = User.objects.get(email=email)
+                elif username:
+                    user_obj = User.objects.get(username=username)
+                    
+                if user_obj and user_obj.check_password(password):
+                    if not user_obj.is_active:
+                         from .serializers import UserSerializer
+                         return Response(
+                            {
+                                'detail': 'Account created successfully. Your account is currently inactive pending admin approval.',
+                                'code': 'account_inactive',
+                                'user': UserSerializer(user_obj).data
+                            },
+                            status=status.HTTP_200_OK
+                        )
+            except User.DoesNotExist:
+                pass
+
             return Response(
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
         if not user.is_active:
-            return Response(
-                {'error': 'Account is inactive'},
-                status=status.HTTP_403_FORBIDDEN
+             # This block likely unreachable with default backend but good specific safety
+             from .serializers import UserSerializer
+             return Response(
+                {
+                    'detail': 'Account created successfully. Your account is currently inactive pending admin approval.',
+                    'code': 'account_inactive',
+                    'user': UserSerializer(user).data
+                },
+                status=status.HTTP_200_OK
             )
 
         # Update last login

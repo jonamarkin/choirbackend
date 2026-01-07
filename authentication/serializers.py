@@ -76,7 +76,9 @@ class RegisterSerializer(BaseRegisterSerializer):
         user.first_name = self.validated_data.get('first_name', '')
         user.last_name = self.validated_data.get('last_name', '')
         user.phone_number = self.validated_data.get('phone_number', '')
+        user.phone_number = self.validated_data.get('phone_number', '')
         user.auth_method = 'email'
+        user.is_active = False  # Pending admin approval
 
         # Handle organization invite code
         org_code = self.validated_data.get('organization_code')
