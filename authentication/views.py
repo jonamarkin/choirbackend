@@ -216,11 +216,17 @@ class AuthViewSet(viewsets.ViewSet):
 # Social Auth Views
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
 
 class GitHubLogin(SocialLoginView):
     adapter_class = GitHubOAuth2Adapter
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
 
 class MicrosoftLogin(SocialLoginView):
     adapter_class = MicrosoftGraphOAuth2Adapter
+    authentication_classes = []
+    permission_classes = [AllowAny]
