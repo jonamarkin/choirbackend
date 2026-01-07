@@ -1,6 +1,6 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, action, authentication_classes
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -32,7 +32,7 @@ class AuthViewSet(viewsets.ViewSet):
 
     @extend_schema(request=LoginSerializer, responses={200: UserSerializer},
                    description="Login with email/username and password")
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], authentication_classes=[])
     def login(self, request):
         """
         Login with email/username and password.
