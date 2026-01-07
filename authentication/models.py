@@ -48,7 +48,7 @@ class User(AbstractUser):
         ('treasurer', 'Treasurer'),
         ('member', 'Member'),  # For future member portal
     ]
-    role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='admin')
+    role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='member')
 
     # Email verification
     email_verified = models.BooleanField(default=False)

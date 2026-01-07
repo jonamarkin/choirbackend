@@ -138,6 +138,7 @@ SITE_ID = 1
 # Allauth Settings
 # ACCOUNT_AUTHENTICATION_METHOD is deprecated
 ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_ADAPTER = 'authentication.adapters.CustomAccountAdapter'
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_EMAIL_VERIFICATION = 'none'
@@ -175,6 +176,7 @@ REST_AUTH = {
     'TOKEN_MODEL': None,
     'USER_DETAILS_SERIALIZER': 'authentication.serializers.UserSerializer',
     'REGISTER_SERIALIZER': 'authentication.serializers.RegisterSerializer',
+    'LOGIN_ON_REGISTER': False,
 }
 
 # JWT Settings
