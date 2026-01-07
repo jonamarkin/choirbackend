@@ -11,15 +11,17 @@ from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
 from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2Adapter
 from dj_rest_auth.registration.views import SocialLoginView, RegisterView
+from .serializers import (
+    LoginSerializer, UserSerializer, PasswordChangeSerializer,
+    SocialAuthConnectionSerializer, LogoutSerializer
+)
+
 
 class CustomRegisterView(RegisterView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-from .serializers import (
-    LoginSerializer, UserSerializer, PasswordChangeSerializer,
-    SocialAuthConnectionSerializer, LogoutSerializer
-)
+
 from .models import SocialAuthConnection
 
 User = get_user_model()
@@ -75,10 +77,9 @@ class AuthViewSet(viewsets.ViewSet):
                     user_obj = User.objects.get(email=email)
                 elif username:
                     user_obj = User.objects.get(username=username)
-                    
+
                 if user_obj and user_obj.check_password(password):
                     if not user_obj.is_active:
-                         from .serializers import UserSerializer
                          return Response(
                             {
                                 'detail': 'Account created successfully. Your account is currently inactive pending admin approval.',
@@ -97,7 +98,6 @@ class AuthViewSet(viewsets.ViewSet):
 
         if not user.is_active:
              # This block likely unreachable with default backend but good specific safety
-             from .serializers import UserSerializer
              return Response(
                 {
                     'detail': 'Account created successfully. Your account is currently inactive pending admin approval.',
