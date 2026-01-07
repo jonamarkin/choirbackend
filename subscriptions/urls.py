@@ -8,8 +8,8 @@ app_name = 'subscriptions'
 router = DefaultRouter(trailing_slash=False)
 
 # Register viewsets
-router.register('', SubscriptionViewSet, basename='subscriptions')
 router.register('payments', PaymentViewSet, basename='payments')
+router.register('', SubscriptionViewSet, basename='subscriptions')
 
 # URL patterns
 urlpatterns = router.urls
