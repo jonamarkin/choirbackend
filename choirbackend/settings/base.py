@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
 
     # Local Apps
     'core',
@@ -144,6 +145,11 @@ ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
 # Social Auth Providers
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
+        'APP': {
+            'client_id': config('GOOGLE_CLIENT_ID', default=''),
+            'secret': config('GOOGLE_CLIENT_SECRET', default=''),
+            'key': ''
+        },
         'SCOPE': [
             'profile',
             'email',
