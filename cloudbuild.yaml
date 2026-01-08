@@ -1,0 +1,34 @@
+steps:
+  # 1. Build the Docker image
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-t", "gcr.io/$PROJECT_ID/choirbackend:$COMMIT_SHA", "."]
+
+  # 2. Push the image to Google Container Registry
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/choirbackend:$COMMIT_SHA"]
+
+  # 3. Deploy to Cloud Run
+  # We use "--no-traffic" first to ensure it's healthy, or just standard deploy
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - "run"
+      - "deploy"
+      - "choirbackend"
+      - "--image"
+      - "gcr.io/$PROJECT_ID/choirbackend:$COMMIT_SHA"
+      - "--region"
+      - "us-central1"
+      - "--allow-unauthenticated"
+      # CRITICAL: Keep the network configuration for the Static IP
+      - "--network"
+      - "default"
+      - "--subnet"
+      - "default"
+      - "--vpc-egress"
+      - "all-traffic"
+      # NOTE: We do NOT need to pass env-vars here.
+      # Cloud Run preserves the variables you set manually earlier.
+
+images:
+  - "gcr.io/$PROJECT_ID/choirbackend:$COMMIT_SHA"
