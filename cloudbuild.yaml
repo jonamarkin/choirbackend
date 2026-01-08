@@ -8,7 +8,6 @@ steps:
     args: ["push", "gcr.io/$PROJECT_ID/choirbackend:$COMMIT_SHA"]
 
   # 3. Deploy to Cloud Run
-  # We use "--no-traffic" first to ensure it's healthy, or just standard deploy
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
@@ -20,15 +19,15 @@ steps:
       - "--region"
       - "us-central1"
       - "--allow-unauthenticated"
-      # CRITICAL: Keep the network configuration for the Static IP
       - "--network"
       - "default"
       - "--subnet"
       - "default"
       - "--vpc-egress"
       - "all-traffic"
-      # NOTE: We do NOT need to pass env-vars here.
-      # Cloud Run preserves the variables you set manually earlier.
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 
 images:
   - "gcr.io/$PROJECT_ID/choirbackend:$COMMIT_SHA"
