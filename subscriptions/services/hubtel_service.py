@@ -162,8 +162,8 @@ class HubtelPaymentService:
         """
         try:
             # Validate IP address if request provided
-            if request and not self.validate_callback_ip(request):
-                return False, "Invalid IP address", None
+            # if request and not self.validate_callback_ip(request):
+            #     return False, "Invalid IP address", None
 
             # Extract client reference
             client_reference = callback_data.get('Data', {}).get('ClientReference')
