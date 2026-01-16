@@ -12,6 +12,20 @@ from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
 from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView, RegisterView
+
+
+class CustomOAuth2Client(OAuth2Client):
+    """
+    Custom OAuth2Client to resolve mismatch between dj-rest-auth and allauth.
+    - Acccepts 'scope' but drops it (allauth removed it).
+    - Ensures scope_delimiter is positional/keyword compatible.
+    """
+    def __init__(self, request, consumer_key, consumer_secret, access_token_method, access_token_url, callback_url, scope=None, scope_delimiter=" ", headers=None, basic_auth=False):
+        if scope_delimiter is None:
+            scope_delimiter = " "
+        # Pass only arguments supported by allauth's OAuth2Client
+        super().__init__(request, consumer_key, consumer_secret, access_token_method, access_token_url, callback_url, scope_delimiter, headers, basic_auth)
+
 from .serializers import (
     LoginSerializer, UserSerializer, PasswordChangeSerializer,
     SocialAuthConnectionSerializer, LogoutSerializer
@@ -250,7 +264,7 @@ class AuthViewSet(viewsets.ViewSet):
 # Social Auth Views
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
-    client_class = OAuth2Client
+    client_class = CustomOAuth2Client
     callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -258,7 +272,7 @@ class GoogleLogin(SocialLoginView):
 
 class GitHubLogin(SocialLoginView):
     adapter_class = GitHubOAuth2Adapter
-    client_class = OAuth2Client
+    client_class = CustomOAuth2Client
     callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -266,7 +280,25 @@ class GitHubLogin(SocialLoginView):
 
 class MicrosoftLogin(SocialLoginView):
     adapter_class = MicrosoftGraphOAuth2Adapter
-    client_class = OAuth2Client
+    client_class = CustomOAuth2Client
     callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def social_account_signup(request):
+    """
+    Fallback view for allauth social account signup redirects.
+    In an API-only context, we don't want to render a signup form.
+    Instead, we return a JSON error indicating that the auto-signup process failed
+    (likely due to missing information or a conflict).
+    """
+    return Response(
+        {
+            'error': 'Social account signup failed',
+            'detail': 'Could not automatically create an account. This may be because an account with this email already exists (try logging in) or essential information is missing from the social provider.'
+        },
+        status=status.HTTP_400_BAD_REQUEST
+    )

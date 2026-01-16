@@ -25,6 +25,9 @@ urlpatterns = [
     
     # Social authentication
     path('social/google/', views.GoogleLogin.as_view(), name='google_login'),
+    path('social/google', views.GoogleLogin.as_view(), name='google_login_no_slash'),
     path('social/github/', views.GitHubLogin.as_view(), name='github_login'),
+    path('social/github', views.GitHubLogin.as_view(), name='github_login_no_slash'),
     path('social/microsoft/', views.MicrosoftLogin.as_view(), name='microsoft_login'),
+    path('social/microsoft', views.MicrosoftLogin.as_view(), name='microsoft_login_no_slash'),
 ]

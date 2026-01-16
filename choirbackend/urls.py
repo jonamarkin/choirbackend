@@ -17,6 +17,7 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from authentication.views import social_account_signup
 
 from django.conf import settings
 from drf_spectacular.views import (
@@ -41,6 +42,9 @@ urlpatterns = [
     # API endpoints
     path('api/v1/', include((v1_0_patterns, 'v1.0'), namespace='v1.0')), # All API Endpoints (Should be in the v1_0_patterns list)
     # path('accounts/', include('allauth.urls')), 
+    
+    # Fallback for allauth redirect (Must be global/non-namespaced)
+    path('social/signup/', social_account_signup, name='socialaccount_signup'),
 ]
 
 
