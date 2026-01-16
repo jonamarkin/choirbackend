@@ -37,30 +37,26 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def pre_social_login(self, request, sociallogin):
         """
-        Debug/Force auto-connect logic.
+        Invoked just before login.
+        We override this to ensure that if a user with the same email exists,
+        we automatically connect this social account to that user.
         """
-        import sys
-        print(f"DEBUG: pre_social_login checked for {sociallogin.user.email}", file=sys.stderr)
-        
-        # Default logic should handle auto-connect if configured
+        # Default logic
         super().pre_social_login(request, sociallogin)
         
-        # If we are here, it means auto-connect didn't happen (or simply finished pre-checks).
-        # Check if user exists but isn't connected.
+        # If the user is not yet existing (not linked), check if we have a local user with this email
         if not sociallogin.is_existing:
             from django.contrib.auth import get_user_model
             User = get_user_model()
             email = sociallogin.user.email
-            print(f"DEBUG: Social user not existing. Checking for local user with email: {email}", file=sys.stderr)
             
             if email:
                 try:
                     user = User.objects.get(email=email)
-                    print(f"DEBUG: Found existing user: {user}. Connecting...", file=sys.stderr)
+                    # Use 'connect' to link this social account to the existing user
                     sociallogin.connect(request, user)
-                    print(f"DEBUG: Connected successfully.", file=sys.stderr)
                 except User.DoesNotExist:
-                    print(f"DEBUG: No local user found with that email.", file=sys.stderr)
+                    pass
 
     def save_user(self, request, sociallogin, form=None):
         """
