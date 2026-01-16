@@ -10,6 +10,7 @@ from django.utils import timezone
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
 from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView, RegisterView
 from .serializers import (
     LoginSerializer, UserSerializer, PasswordChangeSerializer,
@@ -249,17 +250,23 @@ class AuthViewSet(viewsets.ViewSet):
 # Social Auth Views
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
+    client_class = OAuth2Client
+    callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
 
 
 class GitHubLogin(SocialLoginView):
     adapter_class = GitHubOAuth2Adapter
+    client_class = OAuth2Client
+    callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
 
 
 class MicrosoftLogin(SocialLoginView):
     adapter_class = MicrosoftGraphOAuth2Adapter
+    client_class = OAuth2Client
+    callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
