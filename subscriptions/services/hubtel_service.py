@@ -5,6 +5,7 @@ Handles all interactions with the Hubtel Online Checkout API.
 import base64
 import hashlib
 import json
+import logging
 import uuid
 from datetime import timedelta
 from decimal import Decimal
@@ -14,7 +15,8 @@ from django.conf import settings
 from django.utils import timezone
 
 from subscriptions.models import PaymentTransaction
-from subscriptions.views.payment_views import logger
+
+logger = logging.getLogger(__name__)
 
 
 class HubtelPaymentService:
