@@ -215,7 +215,7 @@ class PaymentViewSet(viewsets.ViewSet):
             else:
                 return Response(
                     {'status': 'failed', 'message': message},
-                    status=status.HTTP_200_OK  # Return 200 to prevent retries
+                    status=status.HTTP_200_OK
                 )
 
         except Exception as e:

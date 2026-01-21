@@ -193,6 +193,13 @@ class HubtelPaymentService:
             if response_code == '0000' and status == 'Success' and data.get('Status') == 'Success':
                 # Payment successful
                 transaction.mark_as_success(callback_data)
+
+                # Fetch additional fields from status check (non-blocking)
+                try:
+                    self.check_payment_status(transaction)
+                except Exception as e:
+                    logger.warning(f"Status check failed after callback success: {e}")
+
                 return True, "Payment processed successfully", transaction
 
             else:
@@ -243,17 +250,21 @@ class HubtelPaymentService:
                 data = response_data.get('data', {})
                 status = data.get('status')  # 'Paid', 'Unpaid', 'Refunded'
 
-                if status == 'Paid' and transaction.status != 'success':
-                    # Update transaction to success
+                if status == 'Paid':
+                    # Update transaction with additional fields from status check
                     transaction.hubtel_transaction_id = data.get('transactionId', '')
                     transaction.network_transaction_id = data.get('externalTransactionId', '')
                     transaction.payment_type = data.get('paymentMethod', '')
                     transaction.charges = Decimal(str(data.get('charges', 0)))
                     transaction.amount_after_charges = Decimal(str(data.get('amountAfterCharges', 0)))
 
-                    # Mark as success
-                    callback_data = {'Data': data, 'ResponseCode': '0000', 'Status': 'Success'}
-                    transaction.mark_as_success(callback_data)
+                    # Only mark as success if not already successful
+                    if transaction.status != 'success':
+                        callback_data = {'Data': data, 'ResponseCode': '0000', 'Status': 'Success'}
+                        transaction.mark_as_success(callback_data)
+                    else:
+                        # Just save the additional fields
+                        transaction.save()
 
                 elif status == 'Unpaid':
                     # Still pending
