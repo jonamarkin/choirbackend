@@ -188,13 +188,12 @@ class PaymentViewSet(viewsets.ViewSet):
         Updates PaymentTransaction status and UserSubscription accordingly.
         """
         # Log webhook attempt
-        logger.info(f"Webhook received from IP: {request.META.get('REMOTE_ADDR')}")
+        logger.info(f"This is the webhook data from hubtel: {request.data}")
 
         # Validate callback data structure
         serializer = PaymentWebhookSerializer(data=request.data)
 
         if not serializer.is_valid():
-            logger.warning(f"Invalid webhook data: {serializer.errors}")
             return Response(
                 {'error': 'Invalid webhook data', 'details': serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST
@@ -209,13 +208,11 @@ class PaymentViewSet(viewsets.ViewSet):
             )
 
             if success:
-                logger.info(f"Webhook processed successfully: {message}")
                 return Response(
                     {'status': 'success', 'message': message},
                     status=status.HTTP_200_OK
                 )
             else:
-                logger.warning(f"Webhook processing failed: {message}")
                 return Response(
                     {'status': 'failed', 'message': message},
                     status=status.HTTP_200_OK  # Return 200 to prevent retries
@@ -262,7 +259,6 @@ class PaymentViewSet(viewsets.ViewSet):
                 transaction = hubtel_service.check_payment_status(transaction)
             except Exception as e:
                 logger.error(f"Status check error: {e}", exc_info=True)
-                # Continue with current status from database
 
         # Prepare response
         response_serializer = PaymentStatusSerializer({
@@ -400,6 +396,7 @@ class PaymentViewSet(viewsets.ViewSet):
         try:
             hubtel_service = HubtelPaymentService()
             transaction = hubtel_service.check_payment_status(transaction)
+            logger.info(f"Payment status verified with Hubtel: {transaction}")
 
             serializer = PaymentTransactionSerializer(transaction)
             return Response({
