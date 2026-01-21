@@ -225,7 +225,7 @@ class UserSubscription(TimestampedModel):
         from django.utils import timezone
         from datetime import timedelta
 
-        five_minutes_ago = timezone.now() - timedelta(minutes=5)
+        five_minutes_ago = timezone.now() - timedelta(minutes=1)
         pending_payment = self.payment_transactions.filter(
             status__in=['initiated', 'pending'],
             created_at__gte=five_minutes_ago
