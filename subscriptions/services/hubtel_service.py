@@ -14,6 +14,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from subscriptions.models import PaymentTransaction
+from subscriptions.views.payment_views import logger
 
 
 class HubtelPaymentService:
@@ -233,6 +234,7 @@ class HubtelPaymentService:
             response.raise_for_status()
 
             response_data = response.json()
+            logger.info(f"Hubtel status check response: {response_data}")
 
             # Check response
             if response_data.get('responseCode') == '0000':
