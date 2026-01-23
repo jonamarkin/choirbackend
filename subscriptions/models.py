@@ -78,7 +78,7 @@ class Subscription(TenantAwareModel, TimestampedModel):
         if self.assignees_category == 'EXECUTIVES':
             # Only executive users
             return base_query.filter(
-                role__in=['system_admin', 'super_admin', 'admin', 'finance_admin', 'attendance_officer', 'treasurer']
+                role__in=['super_admin', 'admin', 'finance_admin', 'attendance_officer', 'treasurer']
             )
         elif self.assignees_category == 'MEMBERS':
             # Only regular members (non-executives)

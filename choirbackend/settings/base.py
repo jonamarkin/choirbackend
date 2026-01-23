@@ -1,6 +1,6 @@
-import os
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
+
 import dj_database_url
 from decouple import config
 
@@ -175,8 +175,8 @@ REST_AUTH = {
     'JWT_AUTH_HTTPONLY': False,
     'JWT_AUTH_COOKIE': None,
     'TOKEN_MODEL': None,
-    'USER_DETAILS_SERIALIZER': 'authentication.serializers.UserSerializer',
-    'REGISTER_SERIALIZER': 'authentication.serializers.RegisterSerializer',
+    'USER_DETAILS_SERIALIZER': 'authentication.serializers.user_serializers.UserSerializer',
+    'REGISTER_SERIALIZER': 'authentication.serializers.user_serializers.RegisterSerializer',
     'LOGIN_ON_REGISTER': False,
 }
 
@@ -204,10 +204,10 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'VocalEssence API',
     'DESCRIPTION': 'Chorale Management Platform API',
     'VERSION': '1.0.0',
+    'SWAGGER_UI_SETTINGS': {
+        'persistAuthorization': True,
+    },
 }
-
-# Hubtel Payment Gateway Configuration
-import base64
 
 HUBTEL_CONFIG = {
     # API Credentials
@@ -230,6 +230,6 @@ HUBTEL_CONFIG = {
     ],
 
     # Payment settings
-    'PAYMENT_EXPIRY_MINUTES': 5,  # Hubtel's 5-minute rule for status checks
-    'MAX_CLIENT_REFERENCE_LENGTH': 32,  # Hubtel's max limit for clientReference
+    'PAYMENT_EXPIRY_MINUTES': 5,
+    'MAX_CLIENT_REFERENCE_LENGTH': 32,
 }

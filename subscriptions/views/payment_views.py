@@ -1,7 +1,4 @@
-"""
-Payment Views
-Handles all payment-related API endpoints using Hubtel integration.
-"""
+
 import logging
 
 from django.utils.decorators import method_decorator
@@ -25,7 +22,7 @@ from subscriptions.services.hubtel_service import HubtelPaymentService
 
 logger = logging.getLogger(__name__)
 
-
+@extend_schema(tags=['Payments'])
 class PaymentViewSet(viewsets.ViewSet):
     """
     ViewSet for handling Hubtel payment operations.
@@ -70,7 +67,6 @@ class PaymentViewSet(viewsets.ViewSet):
             404: OpenApiTypes.OBJECT,
             500: OpenApiTypes.OBJECT,
         },
-        tags=['Payments'],
     )
     @action(detail=False, methods=['post'])
     def initiate(self, request):
@@ -170,7 +166,6 @@ class PaymentViewSet(viewsets.ViewSet):
             400: OpenApiTypes.OBJECT,
             500: OpenApiTypes.OBJECT,
         },
-        tags=['Payments', 'Webhooks'],
     )
     @method_decorator(csrf_exempt, name='dispatch')
     @action(detail=False, methods=['post'])
@@ -232,7 +227,6 @@ class PaymentViewSet(viewsets.ViewSet):
             200: PaymentStatusSerializer,
             404: OpenApiTypes.OBJECT,
         },
-        tags=['Payments'],
     )
     @action(detail=True, methods=['get'])
     def status(self, request, pk=None):
@@ -295,7 +289,6 @@ class PaymentViewSet(viewsets.ViewSet):
             ),
         ],
         responses={200: PaymentTransactionSerializer(many=True)},
-        tags=['Payments'],
     )
     def list(self, request):
         """
@@ -337,7 +330,6 @@ class PaymentViewSet(viewsets.ViewSet):
             200: PaymentTransactionSerializer,
             404: OpenApiTypes.OBJECT,
         },
-        tags=['Payments'],
     )
     def retrieve(self, request, pk=None):
         """
@@ -365,7 +357,6 @@ class PaymentViewSet(viewsets.ViewSet):
             404: OpenApiTypes.OBJECT,
             500: OpenApiTypes.OBJECT,
         },
-        tags=['Payments', 'Admin'],
     )
     @action(detail=True, methods=['post'])
     def verify(self, request, pk=None):

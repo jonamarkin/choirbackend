@@ -38,15 +38,14 @@ class User(AbstractUser):
         default='email'
     )
 
-    # Role-based access control
+    # Role-based access control (organization-level roles)
     ROLE_CHOICES = [
-        ('system_admin', 'System Admin'),
         ('super_admin', 'Super Admin'),
         ('admin', 'Admin'),
         ('finance_admin', 'Finance Admin'),
         ('attendance_officer', 'Attendance Officer'),
         ('treasurer', 'Treasurer'),
-        ('member', 'Member'),  # For future member portal
+        ('member', 'Member'),
     ]
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='member')
 
@@ -71,19 +70,20 @@ class User(AbstractUser):
         return f"{self.email} ({org_name})"
 
     def is_system_admin(self):
-        return self.role == 'system_admin'
+        """Platform-level admin - uses Django's built-in is_superuser"""
+        return self.is_superuser
 
     def is_super_admin(self):
-        return self.role == 'super_admin'
+        return self.role == 'super_admin' or self.is_superuser
 
     def is_finance_admin(self):
-        return self.role == 'finance_admin'
+        return self.role == 'finance_admin' or self.is_superuser
 
     def is_attendance_officer(self):
-        return self.role == 'attendance_officer'
+        return self.role == 'attendance_officer' or self.is_superuser
 
     def is_treasurer(self):
-        return self.role == 'treasurer'
+        return self.role == 'treasurer' or self.is_superuser
 
     def has_organization(self):
         return self.organization is not None

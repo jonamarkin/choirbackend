@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from dj_rest_auth.registration.serializers import RegisterSerializer as BaseRegisterSerializer
-from .models import SocialAuthConnection
+from authentication.models import SocialAuthConnection
 
 User = get_user_model()
 
@@ -56,7 +56,7 @@ class RegisterSerializer(BaseRegisterSerializer):
     last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
     phone_number = serializers.CharField(required=False, allow_blank=True)
     organization_code = serializers.CharField(
-        required=False,
+        required=True,
         allow_blank=True,
         help_text="Organization invite code (optional)"
     )
@@ -85,7 +85,7 @@ class RegisterSerializer(BaseRegisterSerializer):
         if org_code:
             from core.models import Organization
             try:
-                org = Organization.objects.get(slug=org_code)
+                org = Organization.objects.get(code=org_code)
                 user.organization = org
             except Organization.DoesNotExist:
                 pass
@@ -151,3 +151,20 @@ class SocialAuthConnectionSerializer(serializers.ModelSerializer):
         model = SocialAuthConnection
         fields = ['id', 'provider', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class OrganizationUserSerializer(serializers.ModelSerializer):
+    """Serializer for organization users"""
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
+
+
+class JoinOrganizationSerializer(serializers.Serializer):
+    """Serializer for joining an organization"""
+    organization_code = serializers.CharField(
+        required=True,
+        min_length=4,
+        max_length=4,
+        help_text="4-digit organization invite code"
+    )
