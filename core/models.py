@@ -1,3 +1,5 @@
+import random
+
 from django.db import models
 import uuid
 from django.utils import timezone
@@ -14,9 +16,16 @@ class Organization(models.Model):
     contact_phone = models.CharField(max_length=20)
     is_active = models.BooleanField(default=True)
     subscription_tier = models.CharField(max_length=50, default='free')
-    
+    code = models.CharField(max_length=4, blank=False, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def generate_organization_code(cls):
+        while True:
+            code = str(random.randint(1000, 9999))
+            if not cls.objects.filter(code=code).exists():
+                return code
     
     class Meta:
         db_table = 'organizations'

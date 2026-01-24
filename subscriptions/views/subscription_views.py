@@ -9,7 +9,7 @@ from drf_spectacular.types import OpenApiTypes
 from subscriptions.models import Subscription, UserSubscription
 from subscriptions.serializers import SubscriptionSerializer, UserSubscriptionPaymentInfoSerializer
 
-
+@extend_schema(tags=['Subscriptions'])
 class SubscriptionViewSet(viewsets.ModelViewSet):
     serializer_class = SubscriptionSerializer
     parser_classes = [JSONParser]
@@ -29,7 +29,6 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
             ),
         ],
         responses={200: UserSubscriptionPaymentInfoSerializer(many=True)},
-        tags=['Subscriptions', 'User'],
     )
     @action(detail=False, methods=['get'], url_path='my-subscriptions')
     def my_subscriptions(self, request):
@@ -77,7 +76,6 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
             403: OpenApiTypes.OBJECT,
             404: OpenApiTypes.OBJECT,
         },
-        tags=['Subscriptions', 'Admin'],
     )
     @action(detail=True, methods=['get'])
     def assignees(self, request, pk=None):

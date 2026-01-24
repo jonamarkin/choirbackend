@@ -12,7 +12,7 @@ class CustomAccountAdapter(DefaultAccountAdapter):
         """
         Return JSON response when user is inactive instead of redirecting.
         """
-        from authentication.serializers import UserSerializer
+        from authentication.serializers.user_serializers import UserSerializer
         
         user_data = UserSerializer(user).data
         

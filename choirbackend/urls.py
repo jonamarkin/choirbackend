@@ -17,7 +17,7 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from authentication.views import social_account_signup
+from authentication.views.auth_views import social_account_signup
 
 from django.conf import settings
 from drf_spectacular.views import (
@@ -29,6 +29,7 @@ from drf_spectacular.views import (
 v1_0_patterns = [
     path('auth/', include('authentication.urls')),
     path('subscriptions/', include('subscriptions.urls', namespace='subscriptions')),
+    path('core/', include('core.urls')),
 ]
 
 

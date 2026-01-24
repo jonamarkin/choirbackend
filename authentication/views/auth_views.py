@@ -13,35 +13,40 @@ from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView, RegisterView
 
-
 class CustomOAuth2Client(OAuth2Client):
     """
     Custom OAuth2Client to resolve mismatch between dj-rest-auth and allauth.
     - Acccepts 'scope' but drops it (allauth removed it).
     - Ensures scope_delimiter is positional/keyword compatible.
     """
-    def __init__(self, request, consumer_key, consumer_secret, access_token_method, access_token_url, callback_url, scope=None, scope_delimiter=" ", headers=None, basic_auth=False):
+
+    def __init__(self, request, consumer_key, consumer_secret, access_token_method, access_token_url, callback_url,
+                 scope=None, scope_delimiter=" ", headers=None, basic_auth=False):
         if scope_delimiter is None:
             scope_delimiter = " "
         # Pass only arguments supported by allauth's OAuth2Client
-        super().__init__(request, consumer_key, consumer_secret, access_token_method, access_token_url, callback_url, scope_delimiter, headers, basic_auth)
+        super().__init__(request, consumer_key, consumer_secret, access_token_method, access_token_url, callback_url,
+                         scope_delimiter, headers, basic_auth)
 
-from .serializers import (
+
+from authentication.serializers.user_serializers import (
     LoginSerializer, UserSerializer, PasswordChangeSerializer,
-    SocialAuthConnectionSerializer, LogoutSerializer
+    SocialAuthConnectionSerializer, LogoutSerializer, JoinOrganizationSerializer
 )
+from core.serializers.organization_serializers import OrganizationSerializer
 
-
+@extend_schema(tags=['Authentication'])
 class CustomRegisterView(RegisterView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
 
-from .models import SocialAuthConnection
+from authentication.models import SocialAuthConnection
 
 User = get_user_model()
 
 
+@extend_schema(tags=['Authentication'])
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny, ]
     parser_classes = [JSONParser]
@@ -95,7 +100,7 @@ class AuthViewSet(viewsets.ViewSet):
 
                 if user_obj and user_obj.check_password(password):
                     if not user_obj.is_active:
-                         return Response(
+                        return Response(
                             {
                                 'detail': 'Account created successfully. Your account is currently inactive pending admin approval.',
                                 'code': 'account_inactive',
@@ -112,8 +117,8 @@ class AuthViewSet(viewsets.ViewSet):
             )
 
         if not user.is_active:
-             # This block likely unreachable with default backend but good specific safety
-             return Response(
+            # This block likely unreachable with default backend but good specific safety
+            return Response(
                 {
                     'detail': 'Account created successfully. Your account is currently inactive pending admin approval.',
                     'code': 'account_inactive',
@@ -184,7 +189,6 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
-
     @extend_schema(request=UserSerializer, responses={200: UserSerializer}, description="Update current user profile")
     @action(detail=False, methods=['put', 'patch'])
     def update_profile(self, request):
@@ -212,7 +216,6 @@ class AuthViewSet(viewsets.ViewSet):
             return Response(serializer.data)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
     @extend_schema(request=PasswordChangeSerializer, responses={200: None}, description="Change user password")
     @action(detail=False, methods=['post'])
@@ -247,8 +250,8 @@ class AuthViewSet(viewsets.ViewSet):
             'message': 'Password changed successfully'
         })
 
-
-    @extend_schema(responses={200: SocialAuthConnectionSerializer(many=True)}, description="Get user's connected social accounts")
+    @extend_schema(responses={200: SocialAuthConnectionSerializer(many=True)},
+                   description="Get user's connected social accounts")
     @action(detail=False, methods=['get'])
     def social_connections(self, request):
         """
@@ -260,8 +263,56 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = SocialAuthConnectionSerializer(connections, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=JoinOrganizationSerializer,
+        responses={200: OrganizationSerializer},
+        description="Join an organization using an invite code"
+    )
+    @action(detail=False, methods=['post'])
+    def join_organization(self, request):
+        """
+        Join an organization using a 4-digit invite code.
+
+        POST /api/v1/auth/join-organization/
+        {
+            "organization_code": "1234"
+        }
+        """
+        serializer = JoinOrganizationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+
+        # Check if user already belongs to an organization
+        if user.organization is not None:
+            return Response(
+                {'error': 'You already belong to an organization'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Find the organization by code
+        from core.models import Organization
+        org_code = serializer.validated_data['organization_code']
+        try:
+            organization = Organization.objects.get(code=org_code)
+        except Organization.DoesNotExist:
+            return Response(
+                {'error': 'Invalid organization code'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Assign user to organization
+        user.organization = organization
+        user.save(update_fields=['organization'])
+
+        return Response({
+            'message': 'Successfully joined organization',
+            'organization': OrganizationSerializer(organization).data
+        })
+
 
 # Social Auth Views
+@extend_schema(tags=['Social Login'])
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     client_class = CustomOAuth2Client
@@ -270,6 +321,7 @@ class GoogleLogin(SocialLoginView):
     permission_classes = [AllowAny]
 
 
+@extend_schema(tags=['Social Login'])
 class GitHubLogin(SocialLoginView):
     adapter_class = GitHubOAuth2Adapter
     client_class = CustomOAuth2Client
@@ -278,6 +330,7 @@ class GitHubLogin(SocialLoginView):
     permission_classes = [AllowAny]
 
 
+@extend_schema(tags=['Social Login'])
 class MicrosoftLogin(SocialLoginView):
     adapter_class = MicrosoftGraphOAuth2Adapter
     client_class = CustomOAuth2Client
@@ -286,6 +339,7 @@ class MicrosoftLogin(SocialLoginView):
     permission_classes = [AllowAny]
 
 
+@extend_schema(tags=['Social Login'])
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 def social_account_signup(request):
