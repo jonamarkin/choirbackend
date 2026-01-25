@@ -64,7 +64,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         Also mark as inactive pending approval.
         """
         user = super().save_user(request, sociallogin, form)
-        user.is_active = False
+        user.is_active = True
         user.save()
         return user
 
