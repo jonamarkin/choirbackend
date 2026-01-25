@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0002_organization_code"),
+        ("core", "0004_populate_org_codes"),
     ]
 
     operations = [
