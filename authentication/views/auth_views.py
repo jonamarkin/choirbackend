@@ -212,7 +212,8 @@ class AuthViewSet(viewsets.ViewSet):
                 if field in serializer.validated_data:
                     serializer.validated_data.pop(field)
 
-            serializer.save()
+            # Mark that the user has filled the profile form
+            serializer.save(filled_form=True)
             return Response(serializer.data)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

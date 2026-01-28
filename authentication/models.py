@@ -52,6 +52,102 @@ class User(AbstractUser):
     # Email verification and Admin Approval
     email_verified = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=False, help_text="Designates whether this user has been approved by an admin.")
+    filled_form = models.BooleanField(default=False, help_text="Designates whether this user has completed their profile after registration.")
+
+    # Member Profile Fields
+    MEMBER_PART_CHOICES = [
+        ('soprano', 'Soprano'),
+        ('alto', 'Alto'),
+        ('tenor', 'Tenor'),
+        ('bass', 'Bass'),
+    ]
+    member_part = models.CharField(
+        max_length=20,
+        choices=MEMBER_PART_CHOICES,
+        blank=True,
+        help_text="Voice part in the choir"
+    )
+
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+        ('other', 'Other'),
+    ]
+    gender = models.CharField(
+        max_length=10,
+        choices=GENDER_CHOICES,
+        blank=True,
+        help_text="Gender of the member"
+    )
+
+    date_of_birth = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of birth"
+    )
+
+    denomination = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Religious denomination"
+    )
+
+    address = models.TextField(
+        blank=True,
+        help_text="Home address"
+    )
+
+    join_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date the member joined the choir"
+    )
+
+    # Employment Information
+    EMPLOYMENT_STATUS_CHOICES = [
+        ('employed', 'Employed'),
+        ('self_employed', 'Self Employed'),
+        ('student', 'Student'),
+        ('unemployed', 'Unemployed'),
+        ('retired', 'Retired'),
+    ]
+    employment_status = models.CharField(
+        max_length=20,
+        choices=EMPLOYMENT_STATUS_CHOICES,
+        blank=True,
+        help_text="Current employment status"
+    )
+
+    occupation = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Occupation or profession"
+    )
+
+    employer = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Employer or institution name"
+    )
+
+    # Emergency Contact Information
+    emergency_contact_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Emergency contact full name"
+    )
+
+    emergency_contact_relationship = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Relationship to emergency contact (e.g., spouse, parent, sibling)"
+    )
+
+    emergency_contact_phone = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Emergency contact phone number"
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

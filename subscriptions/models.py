@@ -98,6 +98,47 @@ def auto_assign_subscription(sender, instance, created, **kwargs):
         instance.assign_to_users()
 
 
+@receiver(post_save, sender=User)
+def assign_subscriptions_to_new_user(sender, instance, created, **kwargs):
+    """
+    Signal to automatically assign existing active subscriptions to newly created users.
+    This ensures that subscriptions created before the user existed still apply to them.
+    """
+    if created and instance.organization:
+        # Get all active subscriptions for the user's organization
+        active_subscriptions = Subscription.objects.filter(
+            organization=instance.organization,
+            is_active=True
+        )
+        
+        # Determine user's role category
+        executive_roles = ['super_admin', 'admin', 'finance_admin', 'attendance_officer', 'treasurer']
+        is_executive = instance.role in executive_roles
+        
+        user_subscriptions = []
+        for subscription in active_subscriptions:
+            # Check if user is eligible based on assignees_category
+            if subscription.assignees_category == 'EXECUTIVES' and not is_executive:
+                continue
+            elif subscription.assignees_category == 'MEMBERS' and is_executive:
+                continue
+            # 'BOTH' applies to everyone
+            
+            # Skip if user already has this subscription (shouldn't happen for new users, but safety check)
+            if not UserSubscription.objects.filter(user=instance, subscription=subscription).exists():
+                user_subscriptions.append(
+                    UserSubscription(
+                        user=instance,
+                        subscription=subscription,
+                        status='not_paid'
+                    )
+                )
+        
+        # Bulk create to optimize database calls
+        if user_subscriptions:
+            UserSubscription.objects.bulk_create(user_subscriptions)
+
+
 class UserSubscription(TimestampedModel):
     """
     Individual user's subscription to a specific subscription period.

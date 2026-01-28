@@ -1,0 +1,149 @@
+﻿python : Using existing test 
+database for alias 'default' 
+('test_postgres')...
+At line:1 char:32
++ ... tivate.ps1; python 
+manage.py test 
+subscriptions.tests --keepdb 
+-v 2 2 ...
++                 ~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: (Using e  
+  xisting ...t_postgres').   
+ ..:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+
+C:\Users\jonam\Documents\Pers
+onalProjects\choir_backend\ve
+nv\Lib\site-packages\dj_rest_
+auth\registration\serializers
+.py:228: UserWarning: app_set
+tings.USERNAME_REQUIRED is 
+deprecated, use: app_settings
+.SIGNUP_FIELDS['username']['r
+equired']
+  required=allauth_account_se
+ttings.USERNAME_REQUIRED,
+C:\Users\jonam\Documents\Pers
+onalProjects\choir_backend\ve
+nv\Lib\site-packages\dj_rest_
+auth\registration\serializers
+.py:230: UserWarning: 
+app_settings.EMAIL_REQUIRED 
+is deprecated, use: app_setti
+ngs.SIGNUP_FIELDS['email']['r
+equired']
+  email = serializers.EmailFi
+eld(required=allauth_account_
+settings.EMAIL_REQUIRED)
+C:\Users\jonam\Documents\Pers
+onalProjects\choir_backend\ve
+nv\Lib\site-packages\dj_rest_
+auth\registration\serializers
+.py:288: UserWarning: 
+app_settings.EMAIL_REQUIRED 
+is deprecated, use: app_setti
+ngs.SIGNUP_FIELDS['email']['r
+equired']
+  email = serializers.EmailFi
+eld(required=allauth_account_
+settings.EMAIL_REQUIRED)
+System check identified some 
+issues:
+
+WARNINGS:
+?: (account.W001) 
+ACCOUNT_LOGIN_METHODS 
+conflicts with 
+ACCOUNT_SIGNUP_FIELDS
+
+System check identified 1 
+issue (0 silenced).
+test_all_executive_roles_get_
+executives_subscription (subs
+criptions.tests.SubscriptionA
+ssignmentSignalTests.test_all
+_executive_roles_get_executiv
+es_subscription)
+Test that all executive 
+roles are assigned to 
+EXECUTIVES subscriptions. 
+... ok
+test_executives_only_subscrip
+tion (subscriptions.tests.Sub
+scriptionAssignmentSignalTest
+s.test_executives_only_subscr
+iption)
+Test EXECUTIVES category 
+only applies to executive 
+roles. ... ok
+test_inactive_subscription_no
+t_assigned_to_new_users (subs
+criptions.tests.SubscriptionA
+ssignmentSignalTests.test_ina
+ctive_subscription_not_assign
+ed_to_new_users)
+Test that inactive 
+subscriptions are not 
+assigned to new users. ... ok
+test_members_only_subscriptio
+n (subscriptions.tests.Subscr
+iptionAssignmentSignalTests.t
+est_members_only_subscription
+)
+Test MEMBERS category only 
+applies to regular members. 
+... ok
+test_new_user_assigned_to_exi
+sting_subscriptions (subscrip
+tions.tests.SubscriptionAssig
+nmentSignalTests.test_new_use
+r_assigned_to_existing_subscr
+iptions)
+Test that when a new user is 
+created, they get assigned 
+to existing active 
+subscriptions. ... ok
+test_subscription_assigned_to
+_existing_users_on_creation (
+subscriptions.tests.Subscript
+ionAssignmentSignalTests.test
+_subscription_assigned_to_exi
+sting_users_on_creation)
+Test that when a 
+subscription is created, 
+it's assigned to existing 
+users. ... ok
+test_user_without_organizatio
+n_not_assigned (subscriptions
+.tests.SubscriptionAssignment
+SignalTests.test_user_without
+_organization_not_assigned)
+Test that users without an 
+organization don't get 
+subscriptions. ... ok
+
+-----------------------------
+-----------------------------
+------------
+Ran 7 tests in 18.782s
+
+OK
+Preserving test database for 
+alias 'default' 
+('test_postgres')...
+
+Found 7 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: allauth, corsheaders, daphne, debug_toolbar, django_extensions, django_filters, drf_spectacular, google, messages, rest_framework, rest_framework_simplejwt, staticfiles
+  Apply all migrations: account, admin, auth, authentication, contenttypes, core, sessions, sites, socialaccount, subscriptions
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  No migrations to apply.
