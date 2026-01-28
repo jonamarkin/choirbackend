@@ -316,27 +316,37 @@ class AuthViewSet(viewsets.ViewSet):
 class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     client_class = CustomOAuth2Client
-    callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
+
+    @property
+    def callback_url(self):
+        # Use callback_url from request if provided, otherwise default
+        return self.request.data.get('callback_url', 'http://localhost:3000')
 
 
 @extend_schema(tags=['Social Login'])
 class GitHubLogin(SocialLoginView):
     adapter_class = GitHubOAuth2Adapter
     client_class = CustomOAuth2Client
-    callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
+
+    @property
+    def callback_url(self):
+        return self.request.data.get('callback_url', 'http://localhost:3000')
 
 
 @extend_schema(tags=['Social Login'])
 class MicrosoftLogin(SocialLoginView):
     adapter_class = MicrosoftGraphOAuth2Adapter
     client_class = CustomOAuth2Client
-    callback_url = "http://localhost:3000"
     authentication_classes = []
     permission_classes = [AllowAny]
+
+    @property
+    def callback_url(self):
+        return self.request.data.get('callback_url', 'http://localhost:3000')
 
 
 @extend_schema(tags=['Social Login'])

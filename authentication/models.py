@@ -49,8 +49,9 @@ class User(AbstractUser):
     ]
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='member')
 
-    # Email verification
+    # Email verification and Admin Approval
     email_verified = models.BooleanField(default=False)
+    is_approved = models.BooleanField(default=False, help_text="Designates whether this user has been approved by an admin.")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
