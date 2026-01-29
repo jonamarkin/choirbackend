@@ -30,6 +30,7 @@ v1_0_patterns = [
     path('auth/', include('authentication.urls')),
     path('subscriptions/', include('subscriptions.urls', namespace='subscriptions')),
     path('core/', include('core.urls')),
+    path('attendance/', include('attendance.urls')),
 ]
 
 

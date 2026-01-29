@@ -29,6 +29,7 @@ class UserSerializer(serializers.ModelSerializer):
     )
     has_organization = serializers.BooleanField(read_only=True)
     subscriptions = serializers.SerializerMethodField()
+    attendance_stats = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -43,6 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
             'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone',
             # Related data
             'subscriptions',
+            'attendance_stats',
             'created_at', 'last_login_at'
         ]
         read_only_fields = [
@@ -54,6 +56,16 @@ class UserSerializer(serializers.ModelSerializer):
         """Get user's subscriptions"""
         user_subscriptions = obj.user_subscriptions.select_related('subscription').all()
         return UserSubscriptionSummarySerializer(user_subscriptions, many=True).data
+
+    def get_attendance_stats(self, obj):
+        """Get user's attendance statistics"""
+        if not obj.organization:
+            return None
+        try:
+            from attendance.models import get_user_attendance_stats
+            return get_user_attendance_stats(obj)
+        except Exception:
+            return None
 
 
 class RegisterSerializer(BaseRegisterSerializer):
