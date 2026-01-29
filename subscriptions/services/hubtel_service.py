@@ -36,7 +36,7 @@ class HubtelPaymentService:
         encoded = base64.b64encode(credentials.encode()).decode()
         return f"Basic {encoded}"
 
-    def initiate_payment(self, user_subscription, amount=None, metadata=None):
+    def initiate_payment(self, user_subscription, amount=None, metadata=None, return_url=None, cancellation_url=None):
         """
         Initiate payment with Hubtel.
 
@@ -44,6 +44,8 @@ class HubtelPaymentService:
             user_subscription: UserSubscription instance
             amount: Payment amount (defaults to outstanding amount)
             metadata: Additional metadata dict
+            return_url: Custom return URL for mobile deep linking (optional)
+            cancellation_url: Custom cancellation URL for mobile deep linking (optional)
 
         Returns:
             PaymentTransaction object
@@ -92,13 +94,14 @@ class HubtelPaymentService:
         )
 
         # Prepare Hubtel API request
+        # Use client-provided URLs for mobile deep links, or fall back to config defaults
         payload = {
             "totalAmount": float(amount),
             "description": transaction.description,
             "callbackUrl": self.config['CALLBACK_URL'],
-            "returnUrl": self.config['RETURN_URL'],
+            "returnUrl": return_url or self.config['RETURN_URL'],
             "merchantAccountNumber": self.config['MERCHANT_ACCOUNT_NUMBER'],
-            "cancellationUrl": self.config['CANCELLATION_URL'],
+            "cancellationUrl": cancellation_url or self.config['CANCELLATION_URL'],
             "clientReference": client_reference,
         }
 

@@ -114,6 +114,18 @@ class PaymentInitiateSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Additional metadata for the transaction"
     )
+    return_url = serializers.URLField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="URL to redirect after successful payment (for mobile deep links, use app scheme e.g., myapp://payment-success)"
+    )
+    cancellation_url = serializers.URLField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="URL to redirect after cancelled payment (for mobile deep links, use app scheme e.g., myapp://payment-cancelled)"
+    )
 
     def validate_user_subscription_id(self, value):
         """Validate that user subscription exists and belongs to current user"""

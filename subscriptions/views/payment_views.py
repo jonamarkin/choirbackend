@@ -119,7 +119,9 @@ class PaymentViewSet(viewsets.ViewSet):
             transaction = hubtel_service.initiate_payment(
                 user_subscription=user_subscription,
                 amount=amount,
-                metadata=metadata
+                metadata=metadata,
+                return_url=validated_data.get('return_url'),
+                cancellation_url=validated_data.get('cancellation_url')
             )
 
             print(f"This is the transaction: {transaction}")
