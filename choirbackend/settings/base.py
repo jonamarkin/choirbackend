@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'authentication',
     'members',
     'subscriptions',
+    'events',
     'attendance',
     'finance',
     'reports',
