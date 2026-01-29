@@ -45,6 +45,7 @@ class EventViewSet(viewsets.ModelViewSet):
     - destroy: Delete event (admin only)
     """
     permission_classes = [IsAuthenticated]
+    lookup_field = 'slug'
     
     def get_queryset(self):
         """Filter events by user's organization"""

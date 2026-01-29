@@ -21,7 +21,7 @@ class EventListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            'id', 'title', 'event_type', 'event_type_display',
+            'id', 'slug', 'title', 'event_type', 'event_type_display',
             'location', 'start_datetime', 'end_datetime',
             'is_mandatory', 'status', 'status_display',
             'attendance_count', 'is_past'
@@ -45,7 +45,7 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            'id', 'title', 'description', 'event_type', 'event_type_display',
+            'id', 'slug', 'title', 'description', 'event_type', 'event_type_display',
             'location', 'start_datetime', 'end_datetime',
             'is_mandatory', 'target_voice_parts',
             'status', 'status_display',
@@ -53,7 +53,7 @@ class EventSerializer(serializers.ModelSerializer):
             'attendance_summary', 'is_past',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'slug', 'created_by', 'created_at', 'updated_at']
 
     def get_created_by_name(self, obj):
         if obj.created_by:

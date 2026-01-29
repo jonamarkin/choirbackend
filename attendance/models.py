@@ -58,6 +58,12 @@ class Event(TenantAwareModel, TimestampedModel):
         blank=True,
         help_text="List of voice parts this event is targeted at (e.g., ['soprano', 'alto']). Null means all parts."
     )
+    slug = models.SlugField(
+        max_length=255,
+        unique=True,
+        blank=True,
+        help_text="URL-friendly identifier"
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -82,7 +88,30 @@ class Event(TenantAwareModel, TimestampedModel):
             models.Index(fields=['organization', 'event_type']),
             models.Index(fields=['start_datetime']),
             models.Index(fields=['organization', 'start_datetime']),
+            models.Index(fields=['slug']),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            import random
+            import string
+            
+            # Generate base slug from title
+            base_slug = slugify(self.title)
+            if not base_slug:
+                base_slug = "event"
+                
+            # Append 4 random chars to ensure uniqueness
+            random_chars = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+            self.slug = f"{base_slug}-{random_chars}"
+            
+            # Ensure uniqueness loop (just in case)
+            while Event.objects.filter(slug=self.slug).exists():
+                random_chars = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+                self.slug = f"{base_slug}-{random_chars}"
+                
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.title} ({self.get_event_type_display()}) - {self.start_datetime.strftime('%Y-%m-%d')}"
