@@ -48,7 +48,7 @@ class MarkAttendanceSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
 
     def validate_user_id(self, value):
-        """Validate user exists and belongs to same organization"""
+        """Validate user exists and permissions"""
         request = self.context.get('request')
         try:
             user = User.objects.get(id=value)
@@ -57,6 +57,11 @@ class MarkAttendanceSerializer(serializers.Serializer):
 
         if user.organization != request.user.organization:
             raise serializers.ValidationError("User does not belong to your organization")
+            
+        # Permission Check for Part Leaders
+        if request.user.role == 'part_leader':
+            if request.user.member_part and user.member_part != request.user.member_part:
+                raise serializers.ValidationError(f"As a Part Leader, you can only mark attendance for {request.user.get_member_part_display()}s.")
 
         return value
 
@@ -91,6 +96,14 @@ class BulkAttendanceSerializer(serializers.Serializer):
                     raise serializers.ValidationError(
                         f"User {item['user_id']} does not belong to your organization"
                     )
+                
+                # Permission Check for Part Leaders
+                if request.user.role == 'part_leader':
+                    if request.user.member_part and user.member_part != request.user.member_part:
+                        raise serializers.ValidationError(
+                            f"User {user.email} is not in your part ({request.user.get_member_part_display()})."
+                        )
+                        
             except User.DoesNotExist:
                 raise serializers.ValidationError(f"User not found: {item['user_id']}")
 

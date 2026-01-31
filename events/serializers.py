@@ -80,9 +80,36 @@ class EventCreateSerializer(serializers.ModelSerializer):
 
         return data
 
+    def validate_target_voice_parts(self, value):
+        """Convert 'all' to None"""
+        if value:
+            # Check if "all" is in the list (case insensitive)
+            if any(str(part).lower() == 'all' for part in value):
+                return None
+        return value
+
     def create(self, validated_data):
         """Create event with organization and created_by from context"""
         request = self.context.get('request')
         validated_data['organization'] = request.user.organization
         validated_data['created_by'] = request.user
         return super().create(validated_data)
+
+
+class RecurringEventSerializer(serializers.Serializer):
+    """
+    Serializer for creating recurring events.
+    """
+    base_event = EventCreateSerializer()
+    frequency = serializers.ChoiceField(choices=['daily', 'weekly', 'biweekly'])
+    count = serializers.IntegerField(required=False, min_value=2, max_value=52, help_text="Number of events to create")
+    until_date = serializers.DateField(required=False, help_text="Date to stop creating events")
+
+    def validate(self, data):
+        if not data.get('count') and not data.get('until_date'):
+            raise serializers.ValidationError("Either 'count' or 'until_date' must be provided.")
+        
+        if data.get('count') and data.get('until_date'):
+             raise serializers.ValidationError("Provide either 'count' or 'until_date', not both.")
+             
+        return data

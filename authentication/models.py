@@ -45,6 +45,7 @@ class User(AbstractUser):
         ('finance_admin', 'Finance Admin'),
         ('attendance_officer', 'Attendance Officer'),
         ('treasurer', 'Treasurer'),
+        ('part_leader', 'Part Leader'),
         ('member', 'Member'),
     ]
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='member')
@@ -60,6 +61,8 @@ class User(AbstractUser):
         ('alto', 'Alto'),
         ('tenor', 'Tenor'),
         ('bass', 'Bass'),
+        ('instrumentalist', 'Instrumentalist'),
+        ('directorate', 'Directorate'),
     ]
     member_part = models.CharField(
         max_length=20,
@@ -182,11 +185,14 @@ class User(AbstractUser):
     def is_treasurer(self):
         return self.role == 'treasurer' or self.is_superuser
 
+    def is_part_leader(self):
+        return self.role == 'part_leader' or self.is_superuser
+
     def has_organization(self):
         return self.organization is not None
 
     def is_executive(self):
-        return self.role in ['super_admin', 'finance_admin', 'attendance_officer', 'treasurer', 'admin']
+        return self.role in ['super_admin', 'finance_admin', 'attendance_officer', 'treasurer', 'admin', 'part_leader']
 
 
 # Social Account Connection Model

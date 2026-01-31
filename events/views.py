@@ -3,11 +3,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.utils import timezone
+from datetime import timedelta
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
 from events.models import Event
-from events.serializers import EventSerializer, EventListSerializer, EventCreateSerializer
+from events.serializers import (
+    EventSerializer, EventListSerializer, EventCreateSerializer, RecurringEventSerializer
+)
 from attendance.models import EventAttendance
 from attendance.serializers import (
     EventAttendanceSerializer, MarkAttendanceSerializer, BulkAttendanceSerializer
@@ -15,15 +18,22 @@ from attendance.serializers import (
 from authentication.models import User
 
 
-class IsAdminOrAttendanceOfficer:
-    """Custom permission check for attendance-related actions"""
-    
+class CanManageEvents:
+    """Permission for full event management (Create/Edit/Delete)"""
     @staticmethod
     def has_permission(user):
-        """Check if user can manage events/attendance"""
         return (
             user.is_superuser or
             user.role in ['super_admin', 'admin', 'attendance_officer']
+        )
+
+class CanMarkAttendance:
+    """Permission for marking attendance (includes Part Leaders)"""
+    @staticmethod
+    def has_permission(user):
+        return (
+            user.is_superuser or
+            user.role in ['super_admin', 'admin', 'attendance_officer', 'part_leader']
         )
 
 
@@ -33,11 +43,12 @@ class EventViewSet(viewsets.ModelViewSet):
     ViewSet for managing choir events.
     
     Actions:
-    - list: Get all events for the organization
-    - retrieve: Get single event details
-    - create: Create new event (admin only)
-    - update: Update event (admin only)
-    - destroy: Delete event (admin only)
+    - list: Get all events for the organization (All members)
+    - retrieve: Get single event details (All members)
+    - create: Create new event (Admin/Attendance Officer)
+    - update: Update event (Admin/Attendance Officer)
+    - destroy: Delete event (Admin/Attendance Officer)
+    - mark_attendance: Mark attendance (Admin/Officer/Part Leader)
     """
     permission_classes = [IsAuthenticated]
     lookup_field = 'slug'
@@ -79,11 +90,22 @@ class EventViewSet(viewsets.ModelViewSet):
             return EventListSerializer
         if self.action in ['create', 'update', 'partial_update']:
             return EventCreateSerializer
+        if self.action == 'create_recurring':
+            return RecurringEventSerializer
         return EventSerializer
     
-    def check_admin_permission(self):
-        """Check if user has admin permissions"""
-        if not IsAdminOrAttendanceOfficer.has_permission(self.request.user):
+    def check_event_management_permission(self):
+        """Check if user can manage events (create/edit/delete)"""
+        if not CanManageEvents.has_permission(self.request.user):
+            return Response(
+                {'error': 'You do not have permission to perform this action'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return None
+    
+    def check_attendance_marking_permission(self):
+        """Check if user can mark attendance"""
+        if not CanMarkAttendance.has_permission(self.request.user):
             return Response(
                 {'error': 'You do not have permission to perform this action'},
                 status=status.HTTP_403_FORBIDDEN
@@ -105,28 +127,109 @@ class EventViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Create a new event (admin/attendance officer only)"""
-        permission_error = self.check_admin_permission()
+        permission_error = self.check_event_management_permission()
         if permission_error:
             return permission_error
         return super().create(request, *args, **kwargs)
+        
+    @extend_schema(
+        request=RecurringEventSerializer,
+        responses={201: OpenApiTypes.OBJECT},
+        description="Create multiple recurring events (e.g., Weekly)"
+    )
+    @action(detail=False, methods=['post'], url_path='recurring')
+    def create_recurring(self, request):
+        """Create a recurring series of events"""
+        permission_error = self.check_event_management_permission()
+        if permission_error:
+            return permission_error
+            
+        serializer = RecurringEventSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        data = serializer.validated_data
+        base_data = data['base_event']
+        frequency = data['frequency']
+        count = data.get('count')
+        until_date = data.get('until_date')
+        
+        # Calculate recurrence delta
+        if frequency == 'daily':
+            delta = timedelta(days=1)
+        elif frequency == 'weekly':
+            delta = timedelta(weeks=1)
+        elif frequency == 'biweekly':
+            delta = timedelta(weeks=2)
+        else:
+            delta = timedelta(weeks=1)
+            
+        events_created = []
+        current_start = base_data['start_datetime']
+        current_end = base_data.get('end_datetime')
+        duration = current_end - current_start if current_end else None
+        
+        # Determine number of events
+        if count:
+            limit = count
+        else:
+            # Safely estimate loops to avoid infinite
+            limit = 52 # Max 1 year for weekly
+            
+        # Loop
+        created_count = 0
+        while True:
+            # Stop conditions
+            if count and created_count >= count:
+                break
+            if until_date and current_start.date() > until_date:
+                break
+            if created_count >= 100: # Hard safety limit
+                break
+                
+            # Create Event
+            event = Event.objects.create(
+                organization=request.user.organization,
+                created_by=request.user,
+                title=base_data['title'],
+                description=base_data.get('description', ''),
+                event_type=base_data['event_type'],
+                location=base_data.get('location', ''),
+                start_datetime=current_start,
+                end_datetime=current_end,
+                is_mandatory=base_data.get('is_mandatory', True),
+                target_voice_parts=base_data.get('target_voice_parts'),
+                status=base_data.get('status', 'scheduled')
+            )
+            events_created.append(event.id)
+            created_count += 1
+            
+            # Increment
+            current_start += delta
+            if current_end:
+                 current_end += delta
+                 
+        return Response({
+            'message': f"Successfully created {created_count} events.",
+            'event_ids': events_created
+        }, status=status.HTTP_201_CREATED)
     
     def update(self, request, *args, **kwargs):
         """Update an event (admin/attendance officer only)"""
-        permission_error = self.check_admin_permission()
+        permission_error = self.check_event_management_permission()
         if permission_error:
             return permission_error
         return super().update(request, *args, **kwargs)
     
     def partial_update(self, request, *args, **kwargs):
         """Partially update an event (admin/attendance officer only)"""
-        permission_error = self.check_admin_permission()
+        permission_error = self.check_event_management_permission()
         if permission_error:
             return permission_error
         return super().partial_update(request, *args, **kwargs)
     
     def destroy(self, request, *args, **kwargs):
         """Delete an event (admin/attendance officer only)"""
-        permission_error = self.check_admin_permission()
+        permission_error = self.check_event_management_permission()
         if permission_error:
             return permission_error
         return super().destroy(request, *args, **kwargs)
@@ -151,7 +254,7 @@ class EventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def mark_attendance(self, request, slug=None):
         """Mark attendance for a single user"""
-        permission_error = self.check_admin_permission()
+        permission_error = self.check_attendance_marking_permission()
         if permission_error:
             return permission_error
         
@@ -183,7 +286,7 @@ class EventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def bulk_mark_attendance(self, request, slug=None):
         """Mark attendance for multiple users at once"""
-        permission_error = self.check_admin_permission()
+        permission_error = self.check_attendance_marking_permission()
         if permission_error:
             return permission_error
         
