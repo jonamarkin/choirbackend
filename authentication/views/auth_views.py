@@ -12,6 +12,8 @@ from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
 from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView, RegisterView
+# Password Reset (OTP) Views
+from authentication.serializers.auth_serializers import RequestPasswordResetSerializer, PasswordResetVerifySerializer
 
 class CustomOAuth2Client(OAuth2Client):
     """
@@ -416,5 +418,53 @@ def resend_otp(request):
         # Generate new OTP
         OTPService.generate_otp(target=email, purpose='activation', channel='email')
         return Response({'message': 'OTP sent successfully.'}, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+@extend_schema(
+    request=RequestPasswordResetSerializer,
+    responses={200: {'message': 'Password reset OTP sent.'}},
+    description="Request OTP for password reset"
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def request_password_reset(request):
+    """
+    Step 1: Request OTP for password reset.
+    """
+    serializer = RequestPasswordResetSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        # Generate OTP for password reset
+        OTPService.generate_otp(target=email, purpose='password_reset', channel='email')
+        return Response({'message': 'Password reset OTP sent to your email.'}, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    request=PasswordResetVerifySerializer,
+    responses={200: {'message': 'Password reset successfully.'}},
+    description="Reset password using Verified OTP"
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_password_confirm(request):
+    """
+    Step 2: Reset password using OTP.
+    """
+    serializer = PasswordResetVerifySerializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.validated_data['user']
+        new_password = serializer.validated_data['new_password']
+        
+        # Set new password
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({'message': 'Password reset successfully. You can now login.'}, status=status.HTTP_200_OK)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
