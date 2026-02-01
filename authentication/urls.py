@@ -24,8 +24,9 @@ urlpatterns = [
     path('resend-otp/', auth_views.resend_otp, name='resend_otp'),
 
     # Password reset ONLY
-    path('password/reset/', PasswordResetView.as_view(), name='password_reset'),
-    path('password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    # Password Reset (OTP)
+    path('password/reset/', auth_views.request_password_reset, name='password_reset_request'),
+    path('password/reset/confirm/', auth_views.reset_password_confirm, name='password_reset_confirm'),
 
     # Social authentication
     path('social/google/', auth_views.GoogleLogin.as_view(), name='google_login'),
