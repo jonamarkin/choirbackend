@@ -18,6 +18,10 @@ urlpatterns = [
     # Registration (custom view to disable auth check)
     path('register/', auth_views.CustomRegisterView.as_view(), name='rest_register'),
     path('register/', include('dj_rest_auth.registration.urls')),
+    
+    # Email Verification
+    path('verify-email/', auth_views.verify_email, name='verify_email'),
+    path('resend-otp/', auth_views.resend_otp, name='resend_otp'),
 
     # Password reset ONLY
     path('password/reset/', PasswordResetView.as_view(), name='password_reset'),

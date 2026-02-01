@@ -215,3 +215,39 @@ class SocialAuthConnection(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.provider}"
+
+
+class OTP(models.Model):
+    """
+    One-Time Password (OTP) for multiple purposes (Activation, Reset, Login).
+    Decoupled from User to support non-user verifications (e.g. phone number before signup).
+    """
+    PURPOSE_CHOICES = [
+        ('activation', 'Account Activation'),
+        ('password_reset', 'Password Reset'),
+        ('login', 'Login Verification'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otps', null=True, blank=True)
+    target = models.CharField(max_length=255, help_text="Email or Phone number")
+    code = models.CharField(max_length=6)
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default='activation')
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'otps'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['target', 'purpose']),
+        ]
+
+    def __str__(self):
+        return f"{self.target} - {self.purpose} ({self.code})"
+
+    def is_valid(self):
+        """Check if OTP is valid (not expired and not used)"""
+        from django.utils import timezone
+        return not self.is_used and self.expires_at > timezone.now()

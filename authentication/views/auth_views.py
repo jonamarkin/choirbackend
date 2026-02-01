@@ -367,3 +367,54 @@ def social_account_signup(request):
         },
         status=status.HTTP_400_BAD_REQUEST
     )
+
+
+# Email Verification Views
+from authentication.serializers.auth_serializers import VerifyEmailSerializer, ResendOTPSerializer
+from authentication.services import OTPService
+
+@extend_schema(
+    request=VerifyEmailSerializer,
+    responses={200: {'message': 'Email verified successfully'}},
+    description="Verify email using OTP code"
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_email(request):
+    """
+    Verify email account activation using 6-digit OTP.
+    """
+    serializer = VerifyEmailSerializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.validated_data['user']
+        # If user is not active, activate them
+        if not user.is_active:
+            user.is_active = True
+            user.email_verified = True
+            user.save()
+            return Response({'message': 'Email verified successfully. You can now login.'}, status=status.HTTP_200_OK)
+        else:
+             return Response({'message': 'Email already verified.'}, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    request=ResendOTPSerializer,
+    responses={200: {'message': 'OTP sent successfully'}},
+    description="Resend activation OTP"
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_otp(request):
+    """
+    Resend the activation OTP to the user's email.
+    """
+    serializer = ResendOTPSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data['email']
+        # Generate new OTP
+        OTPService.generate_otp(target=email, purpose='activation', channel='email')
+        return Response({'message': 'OTP sent successfully.'}, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

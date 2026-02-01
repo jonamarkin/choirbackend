@@ -96,7 +96,8 @@ class RegisterSerializer(BaseRegisterSerializer):
         user.phone_number = self.validated_data.get('phone_number', '')
         user.phone_number = self.validated_data.get('phone_number', '')
         user.auth_method = 'email'
-        user.is_active = True  # Allow login immediately (restricted by role)
+        user.is_active = False  # Require email verification
+        user.email_verified = False
 
         # Handle organization invite code
         org_code = self.validated_data.get('organization_code')
@@ -109,6 +110,11 @@ class RegisterSerializer(BaseRegisterSerializer):
                 pass
 
         user.save()
+        
+        # Generate and send Activation OTP
+        from authentication.services import OTPService
+        OTPService.generate_otp(target=user.email, purpose='activation', user=user, channel='email')
+        
         return user
 
 
