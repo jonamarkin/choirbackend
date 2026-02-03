@@ -2,10 +2,14 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from dj_rest_auth.views import PasswordResetView, PasswordResetConfirmView
-from .views import auth_views
+from .views import auth_views, admin_views
 
 router = DefaultRouter(trailing_slash=False)
 router.register('', auth_views.AuthViewSet, basename='auth')
+
+# Admin router for user management
+admin_router = DefaultRouter(trailing_slash=False)
+admin_router.register('users', admin_views.AdminUserViewSet, basename='admin-users')
 
 urlpatterns = [
 
@@ -35,4 +39,7 @@ urlpatterns = [
     path('social/github', auth_views.GitHubLogin.as_view(), name='github_login_no_slash'),
     path('social/microsoft/', auth_views.MicrosoftLogin.as_view(), name='microsoft_login'),
     path('social/microsoft', auth_views.MicrosoftLogin.as_view(), name='microsoft_login_no_slash'),
+
+    # Admin endpoints for user management
+    path('admin/', include(admin_router.urls)),
 ]
