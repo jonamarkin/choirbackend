@@ -84,8 +84,8 @@ WSGI_APPLICATION = 'choirbackend.wsgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         default=config('DATABASE_URL'),
-        conn_max_age=600,
-
+        conn_max_age=config('CONN_MAX_AGE', default=0, cast=int),
+        conn_health_checks=True,
     )
 }
 
