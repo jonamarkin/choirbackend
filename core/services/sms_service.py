@@ -39,7 +39,7 @@ class SMSService:
     @staticmethod
     def send_sms(phone_number: str, message: str) -> bool:
         """
-        Send SMS via Hubtel API (legacy method for backward compatibility).
+        Send SMS via Hubtel API.
         """
         result = SMSService.send_single_sms(phone_number, message)
         return result.success
