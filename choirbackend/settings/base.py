@@ -238,7 +238,9 @@ HUBTEL_CONFIG = {
     'SMS_CLIENT_ID': config('HUBTEL_SMS_CLIENT_ID', default='hopucxyx'),
     'SMS_CLIENT_SECRET': config('HUBTEL_SMS_CLIENT_SECRET', default='rzqepxui'),
     'SMS_SENDER_ID': config('HUBTEL_SMS_SENDER_ID', default='VECGhana'),
-    'SMS_API_URL': 'https://sms.hubtel.com/v1/messages/send',
+    'SMS_BASE_URL': config('HUBTEL_SMS_BASE_URL', default='https://sms.hubtel.com'),
+    'SMS_SINGLE_PATH': '/v1/messages/send',
+    'SMS_BATCH_PATH': '/v1/messages/batch/simple/send',
 }
 
 # Email Settings
