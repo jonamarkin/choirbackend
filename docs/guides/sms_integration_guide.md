@@ -23,41 +23,41 @@ headers: {
 
 ### SMS Endpoints
 
-| Method | Endpoint                       | Description                     |
-| ------ | ------------------------------ | ------------------------------- |
-| POST   | `/api/v1/core/sms/send-single` | Send SMS to one recipient       |
-| POST   | `/api/v1/core/sms/send-batch`  | Send SMS to multiple recipients |
+| Method | Endpoint                                | Description                     |
+| ------ | --------------------------------------- | ------------------------------- |
+| POST   | `/api/v1/communication/sms/send-single` | Send SMS to one recipient       |
+| POST   | `/api/v1/communication/sms/send-batch`  | Send SMS to multiple recipients |
 
 ### Contact Groups
 
-| Method | Endpoint                                           | Description             |
-| ------ | -------------------------------------------------- | ----------------------- |
-| GET    | `/api/v1/core/contact-groups`                      | List all groups         |
-| POST   | `/api/v1/core/contact-groups`                      | Create group            |
-| GET    | `/api/v1/core/contact-groups/{id}`                 | Get group with contacts |
-| PUT    | `/api/v1/core/contact-groups/{id}`                 | Update group            |
-| DELETE | `/api/v1/core/contact-groups/{id}`                 | Delete group            |
-| POST   | `/api/v1/core/contact-groups/{id}/add-contacts`    | Add contacts to group   |
-| POST   | `/api/v1/core/contact-groups/{id}/remove-contacts` | Remove from group       |
-| GET    | `/api/v1/core/contact-groups/{id}/contacts`        | List group contacts     |
+| Method | Endpoint                                                    | Description             |
+| ------ | ----------------------------------------------------------- | ----------------------- |
+| GET    | `/api/v1/communication/contact-groups`                      | List all groups         |
+| POST   | `/api/v1/communication/contact-groups`                      | Create group            |
+| GET    | `/api/v1/communication/contact-groups/{id}`                 | Get group with contacts |
+| PUT    | `/api/v1/communication/contact-groups/{id}`                 | Update group            |
+| DELETE | `/api/v1/communication/contact-groups/{id}`                 | Delete group            |
+| POST   | `/api/v1/communication/contact-groups/{id}/add-contacts`    | Add contacts to group   |
+| POST   | `/api/v1/communication/contact-groups/{id}/remove-contacts` | Remove from group       |
+| GET    | `/api/v1/communication/contact-groups/{id}/contacts`        | List group contacts     |
 
 ### Contacts
 
-| Method | Endpoint                            | Description          |
-| ------ | ----------------------------------- | -------------------- |
-| GET    | `/api/v1/core/contacts`             | List all contacts    |
-| POST   | `/api/v1/core/contacts`             | Create contact       |
-| POST   | `/api/v1/core/contacts/bulk-create` | Bulk create contacts |
-| PUT    | `/api/v1/core/contacts/{id}`        | Update contact       |
-| DELETE | `/api/v1/core/contacts/{id}`        | Delete contact       |
+| Method | Endpoint                                     | Description          |
+| ------ | -------------------------------------------- | -------------------- |
+| GET    | `/api/v1/communication/contacts`             | List all contacts    |
+| POST   | `/api/v1/communication/contacts`             | Create contact       |
+| POST   | `/api/v1/communication/contacts/bulk-create` | Bulk create contacts |
+| PUT    | `/api/v1/communication/contacts/{id}`        | Update contact       |
+| DELETE | `/api/v1/communication/contacts/{id}`        | Delete contact       |
 
 ### Members (for SMS)
 
-| Method | Endpoint                                     | Description              |
-| ------ | -------------------------------------------- | ------------------------ |
-| GET    | `/api/v1/core/members/phones`                | List members with phones |
-| GET    | `/api/v1/core/members/phones/by-part/{part}` | Filter by voice part     |
-| GET    | `/api/v1/core/members/phones/by-role/{role}` | Filter by role           |
+| Method | Endpoint                                              | Description              |
+| ------ | ----------------------------------------------------- | ------------------------ |
+| GET    | `/api/v1/communication/members/phones`                | List members with phones |
+| GET    | `/api/v1/communication/members/phones/by-part/{part}` | Filter by voice part     |
+| GET    | `/api/v1/communication/members/phones/by-role/{role}` | Filter by role           |
 
 ---
 
@@ -139,7 +139,7 @@ interface MemberPhone {
 
 ```typescript
 const sendSingleSMS = async (to: string, content: string) => {
-  const response = await fetch("/api/v1/core/sms/send-single", {
+  const response = await fetch("/api/v1/communication/sms/send-single", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -155,7 +155,7 @@ const sendSingleSMS = async (to: string, content: string) => {
 
 ```typescript
 const sendBatchSMS = async (recipients: string[], content: string) => {
-  const response = await fetch("/api/v1/core/sms/send-batch", {
+  const response = await fetch("/api/v1/communication/sms/send-batch", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -173,7 +173,7 @@ const sendBatchSMS = async (recipients: string[], content: string) => {
 const sendSMSToGroup = async (groupId: string, content: string) => {
   // 1. Fetch group contacts
   const contactsRes = await fetch(
-    `/api/v1/core/contact-groups/${groupId}/contacts`,
+    `/api/v1/communication/contact-groups/${groupId}/contacts`,
     {
       headers: { Authorization: `Bearer ${token}` },
     },
@@ -195,7 +195,7 @@ const bulkCreateContacts = async (
   contacts: { name: string; phone_number: string }[],
   groupId?: string,
 ) => {
-  const response = await fetch("/api/v1/core/contacts/bulk-create", {
+  const response = await fetch("/api/v1/communication/contacts/bulk-create", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

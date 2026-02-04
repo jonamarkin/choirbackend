@@ -4,7 +4,7 @@ from django.utils import timezone
 from datetime import timedelta
 from authentication.models import OTP
 from core.services.email_service import EmailService
-from core.services.sms_service import SMSService
+from communication.services.sms_service import SMSService
 
 class OTPService:
     @staticmethod

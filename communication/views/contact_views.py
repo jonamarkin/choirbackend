@@ -5,8 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.models import User
-from core.models import ContactGroup, Contact
-from core.serializers.contact_serializers import (
+from communication.models import ContactGroup, Contact
+from communication.serializers.contact_serializers import (
     ContactGroupSerializer,
     ContactGroupDetailSerializer,
     ContactSerializer,

@@ -4,14 +4,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.serializers.sms_serializers import (
+from communication.serializers.sms_serializers import (
     SingleSMSRequestSerializer,
     SingleSMSResponseSerializer,
     BatchSMSRequestSerializer,
     BatchSMSResponseSerializer,
     SMSErrorResponseSerializer
 )
-from core.services.sms_service import SMSService
+from communication.services.sms_service import SMSService
 
 
 @extend_schema(tags=['SMS'])
