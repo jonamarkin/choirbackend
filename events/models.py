@@ -42,6 +42,11 @@ class Event(TenantAwareModel, TimestampedModel):
         help_text="Type of event"
     )
     location = models.CharField(max_length=255, blank=True, help_text="Event location")
+    google_maps_link = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Google Maps link for the event location"
+    )
     start_datetime = models.DateTimeField(help_text="Event start date and time")
     end_datetime = models.DateTimeField(
         null=True,

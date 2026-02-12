@@ -14,7 +14,7 @@ class EventListSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             'id', 'slug', 'title', 'event_type', 'event_type_display',
-            'location', 'start_datetime', 'end_datetime',
+            'location', 'google_maps_link', 'start_datetime', 'end_datetime',
             'is_mandatory', 'status', 'status_display',
             'attendance_count', 'is_past'
         ]
@@ -38,7 +38,7 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             'id', 'slug', 'title', 'description', 'event_type', 'event_type_display',
-            'location', 'start_datetime', 'end_datetime',
+            'location', 'google_maps_link', 'start_datetime', 'end_datetime',
             'is_mandatory', 'target_voice_parts',
             'status', 'status_display',
             'created_by', 'created_by_name',
@@ -64,7 +64,7 @@ class EventCreateSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             'title', 'description', 'event_type',
-            'location', 'start_datetime', 'end_datetime',
+            'location', 'google_maps_link', 'start_datetime', 'end_datetime',
             'is_mandatory', 'target_voice_parts', 'status'
         ]
 
