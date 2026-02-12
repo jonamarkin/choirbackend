@@ -12,8 +12,17 @@ from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
 from allauth.socialaccount.providers.microsoft.views import MicrosoftGraphOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView, RegisterView
-# Password Reset (OTP) Views
-from authentication.serializers.auth_serializers import RequestPasswordResetSerializer, PasswordResetVerifySerializer
+from authentication.serializers.auth_serializers import (
+    RequestPasswordResetSerializer, PasswordResetVerifySerializer,
+    VerifyEmailSerializer, ResendOTPSerializer
+)
+from authentication.serializers.user_serializers import (
+    LoginSerializer, UserSerializer, PasswordChangeSerializer,
+    SocialAuthConnectionSerializer, LogoutSerializer, JoinOrganizationSerializer
+)
+from core.serializers.organization_serializers import OrganizationSerializer
+from authentication.models import SocialAuthConnection
+from authentication.services import OTPService
 
 class CustomOAuth2Client(OAuth2Client):
     """
@@ -31,21 +40,14 @@ class CustomOAuth2Client(OAuth2Client):
                          scope_delimiter, headers, basic_auth)
 
 
-from authentication.serializers.user_serializers import (
-    LoginSerializer, UserSerializer, PasswordChangeSerializer,
-    SocialAuthConnectionSerializer, LogoutSerializer, JoinOrganizationSerializer
-)
-from core.serializers.organization_serializers import OrganizationSerializer
+
+User = get_user_model()
+
 
 @extend_schema(tags=['Authentication'])
 class CustomRegisterView(RegisterView):
     authentication_classes = []
     permission_classes = [AllowAny]
-
-
-from authentication.models import SocialAuthConnection
-
-User = get_user_model()
 
 
 @extend_schema(tags=['Authentication'])
@@ -372,8 +374,6 @@ def social_account_signup(request):
 
 
 # Email Verification Views
-from authentication.serializers.auth_serializers import VerifyEmailSerializer, ResendOTPSerializer
-from authentication.services import OTPService
 
 @extend_schema(
     request=VerifyEmailSerializer,

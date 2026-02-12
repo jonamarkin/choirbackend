@@ -7,6 +7,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
+from core.services.email_service import EmailService
 
 from authentication.permissions import IsOrganizationAdmin
 from authentication.serializers.admin_serializers import (
@@ -125,6 +126,10 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             )
         user.is_approved = True
         user.save(update_fields=['is_approved', 'updated_at'])
+
+        # Send approval notification email
+        EmailService.send_approval_email(email=user.email, first_name=user.first_name)
+
         return Response({
             'message': 'User approved successfully',
             'user': AdminUserListSerializer(user).data
