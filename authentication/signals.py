@@ -14,3 +14,7 @@ def populate_profile(request, user, **kwargs):
         if default_org:
             user.organization = default_org
             user.save(update_fields=['organization'])
+
+            # Assign subscriptions to user
+            from subscriptions.services.subscription_service import assign_subscriptions_to_user
+            assign_subscriptions_to_user(user)
