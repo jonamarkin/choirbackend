@@ -98,15 +98,6 @@ def auto_assign_subscription(sender, instance, created, **kwargs):
         instance.assign_to_users()
 
 
-@receiver(post_save, sender=User)
-def assign_subscriptions_to_new_user(sender, instance, created, **kwargs):
-    """
-    Signal to automatically assign existing active subscriptions to newly created users.
-    This ensures that subscriptions created before the user existed still apply to them.
-    """
-    if created and instance.organization:
-        from subscriptions.services.subscription_service import assign_subscriptions_to_user
-        assign_subscriptions_to_user(instance)
 
 
 class UserSubscription(TimestampedModel):

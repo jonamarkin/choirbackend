@@ -310,6 +310,10 @@ class AuthViewSet(viewsets.ViewSet):
         user.organization = organization
         user.save(update_fields=['organization'])
 
+        # Assign active subscriptions for this organization
+        from subscriptions.services.subscription_service import assign_subscriptions_to_user
+        assign_subscriptions_to_user(user)
+
         return Response({
             'message': 'Successfully joined organization',
             'organization': OrganizationSerializer(organization).data
