@@ -55,7 +55,7 @@ class AttendanceStatsTests(TestCase):
         self.assertEqual(stats['present'], 1)
         self.assertEqual(stats['attendance_percentage'], 100.0)
 
-    def test_stats_respect_all_and_specific_voice_part_targets(self):
+    def test_stats_respect_all_and_specific_voice_part_targets_for_unmarked_events(self):
         start = timezone.now() - timedelta(days=2)
         event_all = Event.objects.create(
             organization=self.org,
@@ -84,8 +84,27 @@ class AttendanceStatsTests(TestCase):
             status='late',
             marked_by=self.user,
         )
+
+        stats = get_user_attendance_stats(self.user)
+
+        self.assertEqual(stats['total_mandatory_events'], 1)
+        self.assertEqual(stats['events_attended'], 1)
+        self.assertEqual(stats['late'], 1)
+
+    def test_stats_include_explicitly_marked_event_even_if_target_differs(self):
+        start = timezone.now() - timedelta(days=2)
+        event = Event.objects.create(
+            organization=self.org,
+            title='Alto Session',
+            event_type='rehearsal',
+            start_datetime=start,
+            end_datetime=start + timedelta(hours=2),
+            is_mandatory=True,
+            status='completed',
+            target_voice_parts=['alto'],
+        )
         EventAttendance.objects.create(
-            event=event_other_part,
+            event=event,
             user=self.user,
             status='present',
             marked_by=self.user,
@@ -95,4 +114,36 @@ class AttendanceStatsTests(TestCase):
 
         self.assertEqual(stats['total_mandatory_events'], 1)
         self.assertEqual(stats['events_attended'], 1)
-        self.assertEqual(stats['late'], 1)
+        self.assertEqual(stats['present'], 1)
+        self.assertEqual(stats['attendance_percentage'], 100.0)
+
+    def test_stats_include_marked_non_mandatory_event_for_user_part(self):
+        """
+        If attendance is explicitly marked for a non-mandatory event that still
+        targets the member's part, stats should include it so history and stats
+        stay consistent for end-users.
+        """
+        start = timezone.now() - timedelta(hours=3)
+        event = Event.objects.create(
+            organization=self.org,
+            title='Sectional Practice',
+            event_type='rehearsal',
+            start_datetime=start,
+            end_datetime=start + timedelta(hours=2),
+            is_mandatory=False,
+            status='scheduled',
+            target_voice_parts=['soprano'],
+        )
+        EventAttendance.objects.create(
+            event=event,
+            user=self.user,
+            status='present',
+            marked_by=self.user,
+        )
+
+        stats = get_user_attendance_stats(self.user)
+
+        self.assertEqual(stats['total_mandatory_events'], 1)
+        self.assertEqual(stats['events_attended'], 1)
+        self.assertEqual(stats['present'], 1)
+        self.assertEqual(stats['attendance_percentage'], 100.0)

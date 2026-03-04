@@ -75,27 +75,16 @@ def get_user_attendance_stats(user, organization=None):
     from django.db.models import Q
     from django.utils import timezone
     
-    # Base query for events
-    events_query = Event.objects.filter(
-        organization=user.organization if organization is None else organization,
-        is_mandatory=True,
-    ).exclude(
-        status='cancelled'
-    ).filter(
-        Q(status='completed') | Q(start_datetime__lte=timezone.now())
-    )
-
-    # Filter by voice-part targeting semantics:
-    # - null/blank target => all members
-    # - ['all'] => all members
-    # - otherwise member_part must be explicitly listed
-    eligible_event_ids = []
-    member_part = (user.member_part or '').strip().lower()
-    for event in events_query.only('id', 'target_voice_parts'):
-        targets = event.target_voice_parts
+    def is_event_targeted_to_user(event_obj):
+        """
+        Voice-part targeting semantics:
+        - null/blank target => all members
+        - ['all'] => all members
+        - otherwise member_part must be explicitly listed
+        """
+        targets = event_obj.target_voice_parts
         if not targets:
-            eligible_event_ids.append(event.id)
-            continue
+            return True
 
         normalized_targets = {
             str(part).strip().lower()
@@ -103,11 +92,44 @@ def get_user_attendance_stats(user, organization=None):
             if str(part).strip()
         }
         if 'all' in normalized_targets:
-            eligible_event_ids.append(event.id)
-            continue
+            return True
 
-        if member_part and member_part in normalized_targets:
+        member_part = (user.member_part or '').strip().lower()
+        return bool(member_part and member_part in normalized_targets)
+
+    # Base query for events
+    scoped_organization = user.organization if organization is None else organization
+    events_query = Event.objects.filter(
+        organization=scoped_organization,
+        is_mandatory=True,
+    ).exclude(
+        status='cancelled'
+    ).filter(
+        Q(status='completed') | Q(start_datetime__lte=timezone.now())
+    )
+
+    eligible_event_ids = []
+    for event in events_query.only('id', 'target_voice_parts'):
+        if is_event_targeted_to_user(event):
             eligible_event_ids.append(event.id)
+
+    # If attendance has already been marked for the user on an event that is
+    # outside the default mandatory/eligible scope (e.g. non-mandatory or
+    # future-dated but explicitly marked), include it so stats stay consistent
+    # with attendance history shown to the user.
+    marked_event_ids = set()
+    marked_events_query = Event.objects.filter(
+        attendances__user=user,
+        organization=scoped_organization,
+    ).exclude(
+        status='cancelled'
+    ).only(
+        'id', 'target_voice_parts'
+    ).distinct()
+    for event in marked_events_query:
+        marked_event_ids.add(event.id)
+
+    eligible_event_ids = list(set(eligible_event_ids) | marked_event_ids)
 
     total_events = len(eligible_event_ids)
     
