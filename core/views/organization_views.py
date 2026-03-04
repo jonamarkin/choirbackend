@@ -80,7 +80,7 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         if not request.user.is_system_admin():
             return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'Permission denied.'})
-        return super().destroy(request, *args, **kwargs)
+        return super().partial_update(request, *args, **kwargs)
 
     @extend_schema(
         summary="Get Organization Member",
@@ -100,16 +100,21 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         request=AddOrganizationMemberSerializer()
     )
     @action(methods=['post'], detail=True)
-    def add_member(self, request):
+    def add_member(self, request, pk=None):
         organization = self.get_object()
-        if (not request.user.is_system_admin()) or (
-                request.user.organization == organization and not request.user.is_super_admin()):
+        can_manage_org = request.user.is_system_admin() or (
+            request.user.organization == organization and request.user.is_super_admin()
+        )
+        if not can_manage_org:
             return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'Permission denied.'})
 
         user_to_add_email = AddOrganizationMemberSerializer(data=request.data)
         user_to_add_email.is_valid(raise_exception=True)
 
-        user = User.objects.get(email=user_to_add_email.validated_data['email'])
+        try:
+            user = User.objects.get(email=user_to_add_email.validated_data['email'])
+        except User.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND, data={'error': 'User not found.'})
         if user.organization:
             return Response(status=status.HTTP_400_BAD_REQUEST,
                             data={'error': 'User already belongs to an organization.'})
@@ -125,16 +130,21 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         request=AddOrganizationMemberSerializer()
     )
     @action(methods=['post'], detail=True)
-    def remove_member(self, request):
+    def remove_member(self, request, pk=None):
         organization = self.get_object()
-        if (not request.user.is_system_admin()) or (
-                request.user.organization == organization and not request.user.is_super_admin()):
+        can_manage_org = request.user.is_system_admin() or (
+            request.user.organization == organization and request.user.is_super_admin()
+        )
+        if not can_manage_org:
             return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'Permission denied.'})
 
         user_to_remove_email = AddOrganizationMemberSerializer(data=request.data)
         user_to_remove_email.is_valid(raise_exception=True)
 
-        user = User.objects.get(email=user_to_remove_email.validated_data['email'])
+        try:
+            user = User.objects.get(email=user_to_remove_email.validated_data['email'])
+        except User.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND, data={'error': 'User not found.'})
         if user == request.user:
             return Response(status=status.HTTP_400_BAD_REQUEST,
                             data={'error': 'Cannot remove yourself from organization.'})

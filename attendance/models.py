@@ -73,29 +73,48 @@ def get_user_attendance_stats(user, organization=None):
     Calculate attendance statistics for a user.
     """
     from django.db.models import Q
+    from django.utils import timezone
     
     # Base query for events
     events_query = Event.objects.filter(
         organization=user.organization if organization is None else organization,
         is_mandatory=True,
-        status='completed'
+    ).exclude(
+        status='cancelled'
+    ).filter(
+        Q(status='completed') | Q(start_datetime__lte=timezone.now())
     )
-    
-    # Filter by voice part if applicable
-    if user.member_part:
-        events_query = events_query.filter(
-            Q(target_voice_parts__isnull=True) | 
-            Q(target_voice_parts__contains=[user.member_part])
-        )
-    else:
-        events_query = events_query.filter(target_voice_parts__isnull=True)
-    
-    total_events = events_query.count()
+
+    # Filter by voice-part targeting semantics:
+    # - null/blank target => all members
+    # - ['all'] => all members
+    # - otherwise member_part must be explicitly listed
+    eligible_event_ids = []
+    member_part = (user.member_part or '').strip().lower()
+    for event in events_query.only('id', 'target_voice_parts'):
+        targets = event.target_voice_parts
+        if not targets:
+            eligible_event_ids.append(event.id)
+            continue
+
+        normalized_targets = {
+            str(part).strip().lower()
+            for part in targets
+            if str(part).strip()
+        }
+        if 'all' in normalized_targets:
+            eligible_event_ids.append(event.id)
+            continue
+
+        if member_part and member_part in normalized_targets:
+            eligible_event_ids.append(event.id)
+
+    total_events = len(eligible_event_ids)
     
     # Get attendance records
     attendance_query = EventAttendance.objects.filter(
         user=user,
-        event__in=events_query
+        event_id__in=eligible_event_ids
     )
     
     present_count = attendance_query.filter(status='present').count()

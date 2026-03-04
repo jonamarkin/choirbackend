@@ -1,8 +1,11 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from django.test.client import RequestFactory
 from datetime import date, timedelta
 from core.models import Organization
-from subscriptions.models import Subscription, UserSubscription
+from subscriptions.models import Subscription, UserSubscription, PaymentTransaction
+from subscriptions.views.subscription_views import SubscriptionViewSet
 
 User = get_user_model()
 
@@ -269,3 +272,132 @@ class SubscriptionAssignmentSignalTests(TestCase):
                 UserSubscription.objects.filter(user=user, subscription=exec_subscription).exists(),
                 f"User with role '{role}' should be assigned to EXECUTIVES subscription"
             )
+
+
+class UserSubscriptionBehaviorTests(TestCase):
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="Behavior Org",
+            code="B001",
+        )
+        self.user = User.objects.create_user(
+            username="behavior_user",
+            email="behavior@test.com",
+            password="password123",
+            organization=self.organization,
+            role="member",
+        )
+        self.subscription = Subscription.objects.create(
+            name="Behavior Subscription",
+            description="Behavior checks",
+            amount=100.00,
+            start_date=date.today() - timedelta(days=1),
+            end_date=date.today() + timedelta(days=20),
+            organization=self.organization,
+            assignees_category="BOTH",
+            is_active=True,
+        )
+        self.user_subscription = UserSubscription.objects.get(
+            user=self.user,
+            subscription=self.subscription,
+        )
+
+    def test_is_currently_active_uses_supported_paid_statuses(self):
+        self.user_subscription.status = 'partially_paid'
+        self.user_subscription.save(update_fields=['status'])
+        self.assertTrue(self.user_subscription.is_currently_active())
+
+        self.user_subscription.status = 'not_paid'
+        self.user_subscription.save(update_fields=['status'])
+        self.assertFalse(self.user_subscription.is_currently_active())
+
+    def test_can_make_payment_blocks_recent_pending_for_five_minutes(self):
+        tx = PaymentTransaction.objects.create(
+            user_subscription=self.user_subscription,
+            user=self.user,
+            organization=self.organization,
+            client_reference="test-ref-1",
+            amount=10,
+            description="test",
+            status='initiated',
+        )
+        tx.created_at = timezone.now() - timedelta(minutes=4)
+        tx.save(update_fields=['created_at'])
+
+        can_pay, message = self.user_subscription.can_make_payment()
+        self.assertFalse(can_pay)
+        self.assertIn('5 minutes', message)
+
+        tx.created_at = timezone.now() - timedelta(minutes=6)
+        tx.save(update_fields=['created_at'])
+        can_pay_after_window, _ = self.user_subscription.can_make_payment()
+        self.assertTrue(can_pay_after_window)
+
+
+class SubscriptionViewsetTenantIsolationTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.org_a = Organization.objects.create(
+            name="Org A",
+            slug="org-a-test",
+            contact_email="orga@test.com",
+            contact_phone="0000000001",
+            code="A001",
+        )
+        self.org_b = Organization.objects.create(
+            name="Org B",
+            slug="org-b-test",
+            contact_email="orgb@test.com",
+            contact_phone="0000000002",
+            code="B002",
+        )
+        self.exec_user = User.objects.create_user(
+            username="exec_a",
+            email="exec_a@test.com",
+            password="password123",
+            organization=self.org_a,
+            role="admin",
+        )
+        self.member_user = User.objects.create_user(
+            username="member_a",
+            email="member_a@test.com",
+            password="password123",
+            organization=self.org_a,
+            role="member",
+        )
+
+        self.sub_a = Subscription.objects.create(
+            name="Sub A",
+            description="A",
+            amount=50,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=30),
+            organization=self.org_a,
+            assignees_category="EXECUTIVES",
+            is_active=True,
+        )
+        self.sub_b = Subscription.objects.create(
+            name="Sub B",
+            description="B",
+            amount=60,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=30),
+            organization=self.org_b,
+            assignees_category="BOTH",
+            is_active=True,
+        )
+
+    def _build_viewset(self, user):
+        request = self.factory.get('/api/v1/subscriptions')
+        request.user = user
+        view = SubscriptionViewSet()
+        view.request = request
+        return view
+
+    def test_executive_queryset_is_scoped_to_organization(self):
+        queryset = self._build_viewset(self.exec_user).get_queryset()
+        self.assertEqual(list(queryset), [self.sub_a])
+
+    def test_member_queryset_only_returns_assigned_subscriptions_in_org(self):
+        queryset = self._build_viewset(self.member_user).get_queryset()
+        self.assertEqual(list(queryset), [])

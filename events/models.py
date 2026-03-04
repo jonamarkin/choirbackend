@@ -147,5 +147,12 @@ class Event(TenantAwareModel, TimestampedModel):
         )
         
         if self.target_voice_parts:
-            return base_query.filter(member_part__in=self.target_voice_parts)
+            normalized_parts = [
+                str(part).strip().lower()
+                for part in self.target_voice_parts
+                if str(part).strip()
+            ]
+            if 'all' in normalized_parts:
+                return base_query
+            return base_query.filter(member_part__in=normalized_parts)
         return base_query

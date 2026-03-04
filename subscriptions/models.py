@@ -106,8 +106,8 @@ class UserSubscription(TimestampedModel):
     Tracks payment status and individual subscription details.
     """
     STATUS_CHOICES = [
-        ('fully_paid', 'Pending Payment'),
-        ('partially_paid', 'Active'),
+        ('fully_paid', 'Fully Paid'),
+        ('partially_paid', 'Partially Paid'),
         ('overdue', 'Overdue'),
         ('not_paid', 'Not Paid'),
         ('refunded', 'Refunded'),
@@ -126,7 +126,7 @@ class UserSubscription(TimestampedModel):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default='pending'
+        default='not_paid'
     )
     amount_paid = models.DecimalField(
         max_digits=10,
@@ -176,7 +176,7 @@ class UserSubscription(TimestampedModel):
         from django.utils import timezone
         today = timezone.now().date()
         return (
-                self.status == 'active'
+                self.status in ['fully_paid', 'partially_paid']
                 and self.subscription.start_date <= today <= self.subscription.end_date
         )
 
@@ -227,7 +227,7 @@ class UserSubscription(TimestampedModel):
         from django.utils import timezone
         from datetime import timedelta
 
-        five_minutes_ago = timezone.now() - timedelta(minutes=1)
+        five_minutes_ago = timezone.now() - timedelta(minutes=5)
         pending_payment = self.payment_transactions.filter(
             status__in=['initiated', 'pending'],
             created_at__gte=five_minutes_ago

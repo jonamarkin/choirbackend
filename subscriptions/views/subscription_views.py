@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
@@ -15,6 +16,43 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser]
     permission_classes = [IsAuthenticated,]
     queryset = Subscription.objects.all()
+
+    def _is_executive(self, user):
+        return hasattr(user, 'is_executive') and user.is_executive()
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated or not user.organization:
+            return Subscription.objects.none()
+
+        org_queryset = Subscription.objects.filter(organization=user.organization)
+        if self._is_executive(user):
+            return org_queryset
+
+        assigned_subscription_ids = UserSubscription.objects.filter(
+            user=user
+        ).values_list('subscription_id', flat=True)
+        return org_queryset.filter(id__in=assigned_subscription_ids)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not self._is_executive(user):
+            raise PermissionDenied('Executive access required.')
+        serializer.save(organization=user.organization)
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        if not self._is_executive(user):
+            raise PermissionDenied('Executive access required.')
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        if not self._is_executive(request.user):
+            return Response(
+                {'error': 'Executive access required.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
         summary="Get My Subscriptions",
@@ -45,7 +83,8 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         - Payment history
         """
         queryset = UserSubscription.objects.filter(
-            user=request.user
+            user=request.user,
+            subscription__organization=request.user.organization,
         ).select_related('user', 'subscription').prefetch_related('payment_transactions')
 
         # Filter by status if provided
