@@ -98,6 +98,36 @@ def auto_assign_subscription(sender, instance, created, **kwargs):
         instance.assign_to_users()
 
 
+@receiver(post_save, sender=User)
+def auto_assign_existing_subscriptions_to_user(sender, instance, created, **kwargs):
+    """
+    Ensure users are assigned to already-existing active subscriptions.
+
+    Why this is needed:
+    - New users can be created before their organization is attached.
+    - Registration/social flows may set organization on a later save.
+    - Without this hook, those users can miss backfilled subscription assignment.
+    """
+    if kwargs.get('raw'):
+        return
+
+    if not instance.organization:
+        return
+
+    # On updates, skip obvious unrelated partial updates for efficiency.
+    # If update_fields is None (full save), we still run because organization
+    # and role may have changed.
+    if not created:
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            relevant_fields = {'organization', 'role', 'is_active'}
+            if relevant_fields.isdisjoint(set(update_fields)):
+                return
+
+    from subscriptions.services.subscription_service import assign_subscriptions_to_user
+    assign_subscriptions_to_user(instance)
+
+
 
 
 class UserSubscription(TimestampedModel):
@@ -449,6 +479,7 @@ class PaymentTransaction(TimestampedModel):
     def mark_as_success(self, callback_data=None):
         """Mark transaction as successful and update related models"""
         from django.utils import timezone
+        from core.services.email_service import EmailService
 
         self.status = 'success'
         self.confirmed_at = timezone.now()
@@ -467,6 +498,16 @@ class PaymentTransaction(TimestampedModel):
 
         # Update UserSubscription
         self.user_subscription.process_payment(self.amount, self.client_reference)
+
+        if self.user and self.user.email:
+            EmailService.send_payment_success_email(
+                email=self.user.email,
+                first_name=self.user.first_name,
+                subscription_name=self.user_subscription.subscription.name,
+                amount=str(self.amount),
+                currency=self.currency,
+                reference=self.client_reference,
+            )
 
     def mark_as_failed(self, error_message='', callback_data=None):
         """Mark transaction as failed"""

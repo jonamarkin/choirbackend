@@ -3,6 +3,7 @@ from allauth.account.adapter import DefaultAccountAdapter
 from allauth.core.exceptions import ImmediateHttpResponse
 from django.http import JsonResponse
 from rest_framework import status
+from core.services.email_service import EmailService
 
 class CustomAccountAdapter(DefaultAccountAdapter):
     """
@@ -63,9 +64,15 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         Ensure user is saved even if form validation fails due to missing optional fields.
         Also mark as inactive pending approval.
         """
+        was_existing = sociallogin.is_existing
         user = super().save_user(request, sociallogin, form)
         user.is_active = True
         user.save()
+        if not was_existing:
+            EmailService.send_pending_approval_email(
+                email=user.email,
+                first_name=user.first_name,
+            )
         return user
 
     def on_authentication_error(self, request, provider_id, error=None, exception=None, extra_context=None):

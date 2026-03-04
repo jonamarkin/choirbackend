@@ -6,6 +6,69 @@ from django.template import Template, Context
 
 class EmailService:
     @staticmethod
+    def _send_basic_email(email, subject, heading, body_lines):
+        """
+        Send a lightweight branded HTML + plain-text email.
+        Returns True on success, False on failure.
+        """
+        display_lines = [line for line in body_lines if line]
+        plain_message = "\n\n".join(display_lines)
+        html_lines = "".join(
+            f"<p style=\"margin:0 0 14px 0; font-size:15px; line-height:1.6; color:#3f3f46;\">{line}</p>"
+            for line in display_lines
+        )
+        html_message = f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{subject}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#fff;border-radius:12px;overflow:hidden;">
+          <tr>
+            <td style="padding:24px 30px;background:#5a1e6e;color:#fff;font-size:22px;font-weight:700;">
+              VocalEssence Chorale
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 30px;">
+              <h2 style="margin:0 0 16px 0;font-size:22px;color:#18181b;">{heading}</h2>
+              {html_lines}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 30px;background:#f4f4f5;color:#71717a;font-size:12px;">
+              &copy; 2026 VocalEssence Chorale
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+        """
+
+        try:
+            send_mail(
+                subject,
+                plain_message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            print(f"Failed to send email: {e}")
+            return False
+
+    @staticmethod
     def send_otp_email(email, otp_code, purpose='activation'):
         """
         Send OTP code via email using the standard template.
@@ -233,3 +296,115 @@ class EmailService:
         except Exception as e:
             print(f"Failed to send approval email: {e}")
             return False
+
+    @staticmethod
+    def send_pending_approval_email(email, first_name=''):
+        """
+        Notify user that account was created and is pending admin review.
+        """
+        display_name = first_name or 'Member'
+        subject = 'Account created - Pending approval'
+        return EmailService._send_basic_email(
+            email=email,
+            subject=subject,
+            heading='Your account is under review',
+            body_lines=[
+                f"Hello {display_name},",
+                "Your account has been created successfully.",
+                "Your profile is currently pending administrator approval. We will notify you once it is approved.",
+            ],
+        )
+
+    @staticmethod
+    def send_account_activated_email(email, first_name=''):
+        display_name = first_name or 'Member'
+        return EmailService._send_basic_email(
+            email=email,
+            subject='Your account has been activated',
+            heading='Account activated',
+            body_lines=[
+                f"Hello {display_name},",
+                "Your account has been activated by an administrator.",
+                "You can now sign in and continue using the app.",
+            ],
+        )
+
+    @staticmethod
+    def send_account_deactivated_email(email, first_name=''):
+        display_name = first_name or 'Member'
+        return EmailService._send_basic_email(
+            email=email,
+            subject='Your account has been deactivated',
+            heading='Account deactivated',
+            body_lines=[
+                f"Hello {display_name},",
+                "Your account has been deactivated by an administrator.",
+                "If this was unexpected, please contact your choir administrators.",
+            ],
+        )
+
+    @staticmethod
+    def send_password_changed_email(email, first_name=''):
+        display_name = first_name or 'Member'
+        return EmailService._send_basic_email(
+            email=email,
+            subject='Password changed successfully',
+            heading='Password updated',
+            body_lines=[
+                f"Hello {display_name},",
+                "Your account password was changed successfully.",
+                "If you did not perform this action, reset your password immediately and contact support.",
+            ],
+        )
+
+    @staticmethod
+    def send_password_reset_success_email(email, first_name=''):
+        display_name = first_name or 'Member'
+        return EmailService._send_basic_email(
+            email=email,
+            subject='Password reset successful',
+            heading='Password reset complete',
+            body_lines=[
+                f"Hello {display_name},",
+                "Your password has been reset successfully.",
+                "You can now log in using your new password.",
+            ],
+        )
+
+    @staticmethod
+    def send_join_organization_email(email, first_name='', organization_name=''):
+        display_name = first_name or 'Member'
+        org_text = organization_name or 'your organization'
+        return EmailService._send_basic_email(
+            email=email,
+            subject='Organization joined successfully',
+            heading='Organization joined',
+            body_lines=[
+                f"Hello {display_name},",
+                f"You have successfully joined {org_text}.",
+                "Any subscriptions and access tied to this organization are now available on your account.",
+            ],
+        )
+
+    @staticmethod
+    def send_payment_success_email(
+        email,
+        first_name='',
+        subscription_name='Subscription',
+        amount='0.00',
+        currency='GHS',
+        reference='',
+    ):
+        display_name = first_name or 'Member'
+        ref_line = f"Reference: {reference}" if reference else None
+        return EmailService._send_basic_email(
+            email=email,
+            subject='Payment successful',
+            heading='Payment received',
+            body_lines=[
+                f"Hello {display_name},",
+                f"We received your payment for {subscription_name}.",
+                f"Amount: {amount} {currency}",
+                ref_line,
+            ],
+        )

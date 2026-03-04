@@ -96,6 +96,41 @@ class SubscriptionAssignmentSignalTests(TestCase):
         # Check status is not_paid
         user_sub = UserSubscription.objects.get(user=member, subscription=subscription)
         self.assertEqual(user_sub.status, "not_paid")
+
+    def test_user_gets_assigned_when_organization_is_set_after_creation(self):
+        """
+        Regression: user may be created first, then organization is attached later.
+        Subscriptions should still be backfilled after org assignment.
+        """
+        subscription = Subscription.objects.create(
+            name="Annual Dues 2024",
+            description="Annual membership dues",
+            amount=100.00,
+            start_date=self.today,
+            end_date=self.next_year,
+            organization=self.organization,
+            assignees_category="BOTH",
+            is_active=True
+        )
+
+        user = User.objects.create_user(
+            username="late_org_member",
+            email="late_org_member@test.com",
+            password="password123",
+            organization=None,
+            role="member"
+        )
+        self.assertFalse(
+            UserSubscription.objects.filter(user=user, subscription=subscription).exists()
+        )
+
+        user.organization = self.organization
+        user.save(update_fields=["organization"])
+
+        self.assertTrue(
+            UserSubscription.objects.filter(user=user, subscription=subscription).exists(),
+            "User should be assigned once organization is attached"
+        )
     
     def test_executives_only_subscription(self):
         """Test EXECUTIVES category only applies to executive roles."""

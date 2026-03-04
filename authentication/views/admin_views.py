@@ -150,6 +150,10 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             )
         user.is_active = True
         user.save(update_fields=['is_active', 'updated_at'])
+        EmailService.send_account_activated_email(
+            email=user.email,
+            first_name=user.first_name,
+        )
         return Response({
             'message': 'User activated successfully',
             'user': AdminUserListSerializer(user).data
@@ -175,6 +179,10 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             )
         user.is_active = False
         user.save(update_fields=['is_active', 'updated_at'])
+        EmailService.send_account_deactivated_email(
+            email=user.email,
+            first_name=user.first_name,
+        )
         return Response({
             'message': 'User deactivated successfully',
             'user': AdminUserListSerializer(user).data

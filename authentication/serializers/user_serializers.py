@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from dj_rest_auth.registration.serializers import RegisterSerializer as BaseRegisterSerializer
 from authentication.models import SocialAuthConnection
+from core.services.email_service import EmailService
 
 User = get_user_model()
 
@@ -110,10 +111,21 @@ class RegisterSerializer(BaseRegisterSerializer):
                 pass
 
         user.save()
+
+        # Ensure subscriptions are backfilled for users who already have org context.
+        if user.organization:
+            from subscriptions.services.subscription_service import (
+                assign_subscriptions_to_user,
+            )
+            assign_subscriptions_to_user(user)
         
         # Generate and send Activation OTP
         from authentication.services import OTPService
         OTPService.generate_otp(target=user.email, purpose='activation', user=user, channel='email')
+        EmailService.send_pending_approval_email(
+            email=user.email,
+            first_name=user.first_name,
+        )
         
         return user
 

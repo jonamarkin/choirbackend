@@ -23,6 +23,7 @@ from authentication.serializers.user_serializers import (
 from core.serializers.organization_serializers import OrganizationSerializer
 from authentication.models import SocialAuthConnection
 from authentication.services import OTPService
+from core.services.email_service import EmailService
 
 class CustomOAuth2Client(OAuth2Client):
     """
@@ -250,6 +251,10 @@ class AuthViewSet(viewsets.ViewSet):
         # Set new password
         user.set_password(serializer.validated_data['new_password'])
         user.save()
+        EmailService.send_password_changed_email(
+            email=user.email,
+            first_name=user.first_name,
+        )
 
         return Response({
             'message': 'Password changed successfully'
@@ -313,6 +318,11 @@ class AuthViewSet(viewsets.ViewSet):
         # Assign active subscriptions for this organization
         from subscriptions.services.subscription_service import assign_subscriptions_to_user
         assign_subscriptions_to_user(user)
+        EmailService.send_join_organization_email(
+            email=user.email,
+            first_name=user.first_name,
+            organization_name=organization.name,
+        )
 
         return Response({
             'message': 'Successfully joined organization',
@@ -398,6 +408,11 @@ def verify_email(request):
             user.is_active = True
             user.email_verified = True
             user.save()
+            if user.organization:
+                from subscriptions.services.subscription_service import (
+                    assign_subscriptions_to_user,
+                )
+                assign_subscriptions_to_user(user)
             return Response({'message': 'Email verified successfully. You can now login.'}, status=status.HTTP_200_OK)
         else:
              return Response({'message': 'Email already verified.'}, status=status.HTTP_200_OK)
@@ -468,6 +483,10 @@ def reset_password_confirm(request):
         # Set new password
         user.set_password(new_password)
         user.save()
+        EmailService.send_password_reset_success_email(
+            email=user.email,
+            first_name=user.first_name,
+        )
         
         return Response({'message': 'Password reset successfully. You can now login.'}, status=status.HTTP_200_OK)
     
