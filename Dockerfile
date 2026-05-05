@@ -2,9 +2,7 @@
 FROM python:3.12-slim
 
 # Set environment variables
-# PREVENT Python from writing pyc files to disc
 ENV PYTHONDONTWRITEBYTECODE=1
-# Prevent Python from buffering stdout and stderr
 ENV PYTHONUNBUFFERED=1
 
 # Set the working directory in the container
@@ -23,8 +21,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the project code into the container
 COPY . /app/
 
+# Collect static files
+RUN ENVIRONMENT=production SECRET_KEY=build-placeholder DATABASE_URL=sqlite:///tmp.db \
+    python manage.py collectstatic --noinput || true
+
+# Create non-root user
+RUN addgroup --system app && adduser --system --ingroup app app
+RUN chown -R app:app /app
+USER app
+
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Run the application
+# Run with daphne (ASGI) for websocket support
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "choirbackend.asgi:application"]
