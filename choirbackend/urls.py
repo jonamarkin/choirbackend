@@ -33,6 +33,7 @@ v1_0_patterns = [
     path('communication/', include('communication.urls')),
     path('events/', include('events.urls')),
     path('attendance/', include('attendance.urls')),
+    path('wallets/', include('wallet.urls')),
 ]
 
 

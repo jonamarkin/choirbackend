@@ -226,6 +226,7 @@ class OTP(models.Model):
         ('activation', 'Account Activation'),
         ('password_reset', 'Password Reset'),
         ('login', 'Login Verification'),
+        ('wallet_verification', 'Wallet Verification')
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
