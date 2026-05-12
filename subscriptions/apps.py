@@ -7,4 +7,4 @@ class SubscriptionsConfig(AppConfig):
 
     def ready(self):
         """Import signals when app is ready"""
-        import subscriptions.models  # noqa: F401
+        import subscriptions.signals  # noqa: F401
