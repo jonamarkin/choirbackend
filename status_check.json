@@ -1,0 +1,37 @@
+[
+  {
+    "message": "Successful",
+    "responseCode": "0000",
+    "data": {
+      "date": "2026-01-21T11:58:41.8429603Z",
+      "status": "Paid",
+      "transactionId": "a8014df27b564633a75138cc3534b322",
+      "externalTransactionId": "73521221525",
+      "paymentMethod": "mobilemoney",
+      "clientReference": "583c74f166d64fdc8a57b39afa",
+      "currencyCode": null,
+      "amount": 1.01,
+      "charges": 0.01,
+      "amountAfterCharges": 1,
+      "isFulfilled": null
+    }
+  },
+  {
+    "ResponseCode": "0000",
+    "Status": "Success",
+    "Data": {
+      "CheckoutId": "a8014df27b564633a75138cc3534b322",
+      "SalesInvoiceId": "bf3a2a5e692545e8a1e2291a4aa60129",
+      "ClientReference": "583c74f166d64fdc8a57b39afa",
+      "Status": "Success",
+      "Amount": 1.01,
+      "CustomerPhoneNumber": "233553183795",
+      "PaymentDetails": {
+        "MobileMoneyNumber": "233553183795",
+        "PaymentType": "mobilemoney",
+        "Channel": "mtn-gh"
+      },
+      "Description": "The MTN Mobile Money payment has been approved and processed successfully."
+    }
+  }
+]

@@ -116,3 +116,15 @@ class WalletVerifyReactivationSerializer(serializers.Serializer):
         wallet.is_active = True
         wallet.save(update_fields=['verified_at', 'is_active', 'updated_at'])
         return wallet
+
+
+class MessageResponseSerializer(serializers.Serializer):
+    """Documentation-only serializer for ``{"message": "..."}`` responses."""
+
+    message = serializers.CharField()
+
+
+class ErrorResponseSerializer(serializers.Serializer):
+    """Documentation-only serializer for ``{"error": "..."}`` responses."""
+
+    error = serializers.CharField()

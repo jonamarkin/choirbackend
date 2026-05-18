@@ -4,6 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from authentication.models import User
 from core.models import Organization, TenantAwareModel, TimestampedModel
 from subscriptions.utils.assignees_categorizations import AssigneesCategorizations
+from subscriptions.utils.auto_debit_period_types import AutoDebitPeriodTypes
 
 
 class Subscription(TenantAwareModel, TimestampedModel):
@@ -475,3 +476,35 @@ class PaymentTransaction(TimestampedModel):
         if callback_data:
             self.callback_data = callback_data
         self.save()
+
+#
+# class AutoDebit(TimestampedModel):
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     name = models.CharField(max_length=255)
+#     user = models.ForeignKey(
+#         User,
+#         on_delete=models.CASCADE,
+#         related_name='auto_debits'
+#     )
+#     organization = models.ForeignKey(
+#         Organization,
+#         on_delete=models.CASCADE,
+#         related_name='auto_debits'
+#     )
+#     subscription = models.ForeignKey(
+#         Subscription,
+#         on_delete=models.CASCADE,
+#         related_name='auto_debits'
+#     )
+#     amount = models.DecimalField(
+#         max_digits=10,
+#         decimal_places=2,
+#         help_text="Amount to debit from the user's account"
+#     )
+#     debit_period = models.CharField(choices=AutoDebitPeriodTypes.choices(), max_length=20, default=AutoDebitPeriodTypes.WEEKLY.value)
+#     next_debit_date = models.DateField()
+#
+#     class Meta:
+#         indexes = [
+#             models.Index(fields=['subscription', 'debit_period']),
+#         ]
