@@ -478,36 +478,49 @@ class PaymentTransaction(TimestampedModel):
 
     def mark_as_success(self, callback_data=None):
         """Mark transaction as successful and update related models"""
+        from django.db import transaction as db_transaction
         from django.utils import timezone
         from core.services.email_service import EmailService
 
-        self.status = 'success'
-        self.confirmed_at = timezone.now()
-        self.callback_received_at = timezone.now()
+        with db_transaction.atomic():
+            self.status = 'success'
+            self.confirmed_at = timezone.now()
+            self.callback_received_at = timezone.now()
 
-        if callback_data:
-            self.callback_data = callback_data
-            # Extract payment details from callback
-            payment_details = callback_data.get('Data', {}).get('PaymentDetails', {})
-            self.payment_channel = payment_details.get('Channel', '')
-            self.payment_type = payment_details.get('PaymentType', '')
-            self.customer_mobile_number = payment_details.get('MobileMoneyNumber', '')
-            self.sales_invoice_id = callback_data.get('Data', {}).get('SalesInvoiceId', '')
+            if callback_data:
+                self.callback_data = callback_data
+                # Extract payment details from callback
+                payment_details = callback_data.get('Data', {}).get('PaymentDetails', {})
+                self.payment_channel = payment_details.get('Channel', '')
+                self.payment_type = payment_details.get('PaymentType', '')
+                self.customer_mobile_number = payment_details.get('MobileMoneyNumber', '')
+                self.sales_invoice_id = callback_data.get('Data', {}).get('SalesInvoiceId', '')
 
-        self.save()
+            self.save()
 
-        # Update UserSubscription
-        self.user_subscription.process_payment(self.amount, self.client_reference)
+            # Update UserSubscription
+            self.user_subscription.process_payment(self.amount, self.client_reference)
 
-        if self.user and self.user.email:
-            EmailService.send_payment_success_email(
-                email=self.user.email,
-                first_name=self.user.first_name,
-                subscription_name=self.user_subscription.subscription.name,
-                amount=str(self.amount),
-                currency=self.currency,
-                reference=self.client_reference,
-            )
+            if self.user and self.user.email:
+                # Defer SMTP until after the surrounding transaction commits,
+                # so a slow mail backend cannot stall the webhook response and
+                # a rolled-back transaction never sends a misleading email.
+                email = self.user.email
+                first_name = self.user.first_name
+                subscription_name = self.user_subscription.subscription.name
+                amount_str = str(self.amount)
+                currency = self.currency
+                reference = self.client_reference
+                db_transaction.on_commit(
+                    lambda: EmailService.send_payment_success_email(
+                        email=email,
+                        first_name=first_name,
+                        subscription_name=subscription_name,
+                        amount=amount_str,
+                        currency=currency,
+                        reference=reference,
+                    )
+                )
 
     def mark_as_failed(self, error_message='', callback_data=None):
         """Mark transaction as failed"""

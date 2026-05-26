@@ -1,9 +1,7 @@
 
 import logging
 
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework import viewsets, status
+.0from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -124,8 +122,6 @@ class PaymentViewSet(viewsets.ViewSet):
                 cancellation_url=validated_data.get('cancellation_url')
             )
 
-            print(f"This is the transaction: {transaction}")
-
             # Prepare response
             response_serializer = PaymentInitiateResponseSerializer({
                 'transaction_id': transaction.id,
@@ -165,11 +161,9 @@ class PaymentViewSet(viewsets.ViewSet):
         request=PaymentWebhookSerializer,
         responses={
             200: OpenApiTypes.OBJECT,
-            400: OpenApiTypes.OBJECT,
             500: OpenApiTypes.OBJECT,
         },
     )
-    @method_decorator(csrf_exempt, name='dispatch')
     @action(detail=False, methods=['post'])
     def webhook(self, request):
         """
@@ -183,17 +177,28 @@ class PaymentViewSet(viewsets.ViewSet):
         - Duplicate prevention
 
         Updates PaymentTransaction status and UserSubscription accordingly.
+
+        Always returns 2xx for any payload we can read and decide on; 5xx is
+        reserved for truly unhandled errors so Hubtel will retry only when a
+        retry can actually help.
         """
-        # Log webhook attempt
-        logger.info(f"This is the webhook data from hubtel: {request.data}")
+        # DRF does not enforce CSRF for non-SessionAuthentication routes with
+        # AllowAny permissions, so no csrf_exempt decorator is needed here.
+        client_reference = (request.data or {}).get('Data', {}).get('ClientReference')
+        logger.info(f"Hubtel webhook received for client_reference={client_reference!r}")
+        logger.debug(f"Hubtel webhook payload: {request.data}")
 
         # Validate callback data structure
         serializer = PaymentWebhookSerializer(data=request.data)
 
         if not serializer.is_valid():
+            logger.warning(
+                f"Hubtel webhook rejected: schema_invalid for client_reference="
+                f"{client_reference!r} details={serializer.errors}"
+            )
             return Response(
-                {'error': 'Invalid webhook data', 'details': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
+                {'status': 'rejected', 'reason': 'schema_invalid', 'details': serializer.errors},
+                status=status.HTTP_200_OK
             )
 
         try:
@@ -209,11 +214,10 @@ class PaymentViewSet(viewsets.ViewSet):
                     {'status': 'success', 'message': message},
                     status=status.HTTP_200_OK
                 )
-            else:
-                return Response(
-                    {'status': 'failed', 'message': message},
-                    status=status.HTTP_200_OK
-                )
+            return Response(
+                {'status': 'rejected', 'reason': message},
+                status=status.HTTP_200_OK
+            )
 
         except Exception as e:
             logger.error(f"Webhook processing error: {e}", exc_info=True)
