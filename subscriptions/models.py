@@ -1,10 +1,12 @@
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from authentication.models import User
 from core.models import Organization, TenantAwareModel, TimestampedModel
 from subscriptions.utils.assignees_categorizations import AssigneesCategorizations
 from subscriptions.utils.auto_debit_period_types import AutoDebitPeriodTypes
+from wallet.models import MobileWallet
 
 
 class Subscription(TenantAwareModel, TimestampedModel):
@@ -477,34 +479,92 @@ class PaymentTransaction(TimestampedModel):
             self.callback_data = callback_data
         self.save()
 
-#
-# class AutoDebit(TimestampedModel):
-#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-#     name = models.CharField(max_length=255)
-#     user = models.ForeignKey(
-#         User,
-#         on_delete=models.CASCADE,
-#         related_name='auto_debits'
-#     )
-#     organization = models.ForeignKey(
-#         Organization,
-#         on_delete=models.CASCADE,
-#         related_name='auto_debits'
-#     )
-#     subscription = models.ForeignKey(
-#         Subscription,
-#         on_delete=models.CASCADE,
-#         related_name='auto_debits'
-#     )
-#     amount = models.DecimalField(
-#         max_digits=10,
-#         decimal_places=2,
-#         help_text="Amount to debit from the user's account"
-#     )
-#     debit_period = models.CharField(choices=AutoDebitPeriodTypes.choices(), max_length=20, default=AutoDebitPeriodTypes.WEEKLY.value)
-#     next_debit_date = models.DateField()
-#
-#     class Meta:
-#         indexes = [
-#             models.Index(fields=['subscription', 'debit_period']),
-#         ]
+
+class DirectDebit(TimestampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='direct_debits'
+    )
+    wallet = models.ForeignKey(MobileWallet, on_delete=models.PROTECT, related_name='direct_debits')
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Amount to be debited from the wallet"
+    )
+    period_type = models.CharField(choices=AutoDebitPeriodTypes.choices(), max_length=20, default=AutoDebitPeriodTypes.MONTHLY.value)
+    user_subscription = models.ForeignKey(UserSubscription, on_delete=models.PROTECT, related_name='direct_debits')
+    next_payment_date = models.DateField(null=True, blank=True, help_text="Next payment date for this direct debit")
+    previous_payment_date = models.DateField(null=True, blank=True, help_text="Previous payment date for this direct debit")
+    hubtel_preapproval_id = models.CharField(max_length=255, blank=True)
+    initiate_client_reference = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    otp_prefix = models.CharField(max_length=10, blank=True)
+    approval_status = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'direct_debits'
+        ordering = ['-created_at']
+        verbose_name = 'Direct Debit'
+        verbose_name_plural = 'Direct Debits'
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['approval_status', 'next_payment_date']),
+            models.Index(fields=['next_payment_date']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user_subscription'],
+                condition=models.Q(is_active=True),
+                name='uniq_active_dd_per_user_sub',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.amount} ({self.period_type})"
+
+    def clean(self):
+        super().clean()
+        # the wallet must belong to this user.
+        if self.wallet_id and self.user_id and self.wallet.user_id != self.user_id:
+            raise ValidationError({'wallet': 'Wallet does not belong to this user.'})
+
+        # the user subscription must belong to this user.
+        if (self.user_id and self.user_subscription_id
+                and self.user_subscription.user_id != self.user_id):
+            raise ValidationError({'user_subscription': 'User subscription does not belong to this user.'})
+
+        # the subscription must be in the user's organization.
+        if (self.user_id and self.user_subscription_id
+                and self.user.organization_id
+                and self.user_subscription.subscription.organization_id != self.user.organization_id):
+            raise ValidationError({'user_subscription': 'Subscription belongs to a different organization.'})
+
+        # Wallet gating — only at creation. An existing debit must not break
+        # simply because its wallet was later deactivated (the charge-time
+        # check belongs to the future execution flow).
+        if self._state.adding and self.wallet_id:
+            if not self.wallet.is_active or self.wallet.verified_at is None:
+                raise ValidationError({'wallet': 'Wallet must be active and verified.'})
+
+        # At most one active mandate per user subscription (friendly error
+        # ahead of the DB partial unique constraint).
+        if self._state.adding and self.user_subscription_id and self.is_active:
+            if DirectDebit.objects.filter(
+                user_subscription_id=self.user_subscription_id, is_active=True
+            ).exists():
+                raise ValidationError(
+                    {'user_subscription': 'An active direct debit already exists for this subscription.'}
+                )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def mark_approved(self):
+        """Mark the mandate approved and seed the first scheduled payment date."""
+        self.approval_status = True
+        self.next_payment_date = AutoDebitPeriodTypes.next_date(self.period_type)
+        self.save(update_fields=['approval_status', 'next_payment_date', 'updated_at'])
+

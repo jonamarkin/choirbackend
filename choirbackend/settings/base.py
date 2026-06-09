@@ -221,11 +221,15 @@ HUBTEL_CONFIG = {
     # API URLs
     'PAYMENT_API_URL': 'https://payproxyapi.hubtel.com/items/initiate',
     'STATUS_API_URL': 'https://api-txnstatus.hubtel.com/transactions',
+    'DIRECT_DEBIT_REGISTRATION_URL': f'https://preapproval.hubtel.com/api/v2/merchant/{config('HUBTEL_MERCHANT_ACCOUNT_NUMBER')}/preapproval/initiate',
+    'DIRECT_DEBIT_OTP_VERIFY_URL': f'https://preapproval.hubtel.com/api/v2/merchant/{config('HUBTEL_MERCHANT_ACCOUNT_NUMBER')}/preapproval/verifyotp',
+    'DIRECT_DEBIT_PREAPPROVAL_STATUS_URL': f'https://preapproval.hubtel.com/api/v2/merchant/{config("HUBTEL_MERCHANT_ACCOUNT_NUMBER")}/preapproval',
 
     # Webhook URLs
     'CALLBACK_URL': config('HUBTEL_CALLBACK_URL', default=''),
     'RETURN_URL': config('HUBTEL_RETURN_URL', default=''),
     'CANCELLATION_URL': config('HUBTEL_CANCELLATION_URL', default=''),
+    'DIRECT_DEBIT_CALLBACK_URL': config('HUBTEL_DIRECT_DEBIT_CALLBACK_URL', default=''),
 
     # IP Whitelist
     'WHITELISTED_IPS': [
@@ -235,7 +239,7 @@ HUBTEL_CONFIG = {
     # Payment settings
     'PAYMENT_EXPIRY_MINUTES': 5,
     'MAX_CLIENT_REFERENCE_LENGTH': 32,
-    
+
     # SMS API Settings
     'SMS_CLIENT_ID': config('HUBTEL_SMS_CLIENT_ID', default='hopucxyx'),
     'SMS_CLIENT_SECRET': config('HUBTEL_SMS_CLIENT_SECRET', default='rzqepxui'),

@@ -12,9 +12,12 @@ from decimal import Decimal
 
 import requests
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from subscriptions.models import PaymentTransaction
+from subscriptions.models import PaymentTransaction, UserSubscription, DirectDebit
+from wallet.models import MobileWallet
+from wallet.utils.wallet_network_type import WalletNetworkType
 
 logger = logging.getLogger(__name__)
 
@@ -333,3 +336,140 @@ class HubtelPaymentService:
                     return True
 
         return False
+
+    @staticmethod
+    def get_direct_debit_channel(wallet: MobileWallet):
+        if wallet.network == WalletNetworkType.MTN.value:
+            return "mtn-gh-direct-debit"
+        elif wallet.network == WalletNetworkType.TELECEL.value:
+            return "vodafone-gh-direct-debit"
+        else:
+            raise ValueError(f"Unsupported wallet network: {wallet.network}")
+
+    def initiate_hubtel_direct_debit_registration(self, wallet_id, user_subscription_id,
+                                                  amount, period_type):
+        """
+        Initiates the Hubtel direct debit registration process for a specific wallet and user subscription.
+
+        This method registers a direct debit mandate with Hubtel for automated periodic payments, ensuring
+        pre-validation is completed locally to avoid creating inconsistent states on the remote system.
+
+        Parameters:
+            wallet_id (int): The ID of the mobile wallet to be linked to the direct debit.
+            user_subscription_id (int): The ID of the user's subscription associated with the mandate.
+            amount (float): The payment amount to be periodically collected.
+            period_type (str): The frequency or duration type for the recurring debit.
+
+        Returns:
+            tuple: A tuple containing the created direct debit object and the verification type (if registration
+                   succeeds), or a tuple of (None, None) if the attempt fails.
+        """
+        wallet = MobileWallet.objects.filter(id=wallet_id).first()
+        user_subscription = UserSubscription.objects.filter(id=user_subscription_id).first()
+
+        # Validate locally BEFORE registering a mandate at Hubtel, so we never
+        # leave an orphaned remote mandate we cannot persist.
+        if wallet.user_id != user_subscription.user_id:
+            raise ValueError("Wallet does not belong to the subscription's user.")
+        if not wallet.is_active or wallet.verified_at is None:
+            raise ValueError("Wallet must be active and verified.")
+
+        client_reference = self.generate_client_reference(user_subscription)
+        client_account_number = wallet.account_number
+        channel = self.get_direct_debit_channel(wallet)
+
+        try:
+            response = requests.post(
+                self.config['DIRECT_DEBIT_REGISTRATION_URL'],
+                json={
+                    "clientReferenceId": client_reference,
+                    "customerMsisdn": client_account_number,
+                    "channel": channel,
+                    "callbackUrl": self.config['DIRECT_DEBIT_CALLBACK_URL'],
+                },
+                headers={
+                    'Authorization': self.get_auth_header(),
+                    'Content-Type': 'application/json',
+                },
+                timeout=30
+            )
+
+            response.raise_for_status()
+            response_data = response.json()
+            logger.info("Hubtel direct debit registration response: %s", response_data)
+
+            if response_data.get('responseCode') == '2000':
+                data = response_data.get('data', {})
+                verification_type = data.get('verificationType')
+
+                direct_debit = DirectDebit.objects.create(
+                    user=user_subscription.user,
+                    wallet=wallet,
+                    amount=amount,
+                    period_type=period_type,
+                    user_subscription=user_subscription,
+                    hubtel_preapproval_id=data.get('hubtelPreApprovalId') or '',
+                    initiate_client_reference=client_reference,
+                    otp_prefix=data.get('otpPrefix') or '',
+                )
+                return direct_debit, verification_type
+            else:
+                return None, None
+        except (requests.RequestException, ValidationError) as e:
+            logger.warning("Failed to initiate Hubtel direct debit registration: %s", e)
+            return None, None
+
+    def verify_hubtel_direct_debit_otp(self, otp_code, direct_debit_id):
+        direct_debit = DirectDebit.objects.filter(id=direct_debit_id).first()
+        if not direct_debit:
+            return False
+
+        try:
+            response = requests.post(
+                self.config['DIRECT_DEBIT_OTP_VERIFY_URL'],
+                json={
+                    "customerMsisdn": direct_debit.wallet.account_number,
+                    "hubtelPreApprovalId": direct_debit.hubtel_preapproval_id,
+                    "clientReferenceId": direct_debit.initiate_client_reference,
+                    "otp": f"{direct_debit.otp_prefix}-{otp_code}",
+                },
+                headers={
+                    'Authorization': self.get_auth_header(),
+                    'Content-Type': 'application/json',
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            return response_data.get('responseCode') == '2000'
+        except requests.RequestException as e:
+            logger.warning("Failed to verify Hubtel direct debit OTP: %s", e)
+            return False
+
+    def check_hubtel_direct_debit_preapproval_status(self, direct_debit_id):
+        direct_debit = DirectDebit.objects.filter(id=direct_debit_id).first()
+        if not direct_debit:
+            return None
+        url = f"{self.config['DIRECT_DEBIT_PREAPPROVAL_STATUS_URL']}/{direct_debit.initiate_client_reference}/status"
+
+        try:
+            response = requests.get(
+                url,
+                headers={
+                    'Authorization': self.get_auth_header(),
+                    'Content-Type': 'application/json',
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            data = response_data.get('data', {})
+            if response_data.get('code') == '2000' and data.get('status') == 'APPROVED':
+                direct_debit.mark_approved()
+                return True
+            else:
+                return False
+
+        except requests.RequestException as e:
+            logger.warning("Failed to check Hubtel direct debit preapproval status: %s", e)
+            return False

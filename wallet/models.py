@@ -30,6 +30,7 @@ class MobileWallet(models.Model):
             models.Index(fields=['user', 'is_active']),
             models.Index(fields=['account_number']),
         ]
+        unique_together = [['user', 'account_number']]
 
     def mark_verified(self):
         self.verified_at = timezone.now()
