@@ -456,6 +456,7 @@ class PaymentTransaction(TimestampedModel):
 
     def mark_as_success(self, callback_data=None):
         """Mark transaction as successful and update related models"""
+        from django.db import transaction as db_transaction
         from django.utils import timezone
         from core.services.email_service import EmailService
 

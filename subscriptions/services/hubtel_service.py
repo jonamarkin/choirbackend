@@ -8,12 +8,12 @@ import json
 import logging
 import uuid
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from subscriptions.models import PaymentTransaction, UserSubscription, DirectDebit
@@ -134,7 +134,7 @@ class HubtelPaymentService:
             response.raise_for_status()
 
             response_data = response.json()
-            print(f"Hubtel response: {response_data}")
+            logger.debug(f"Hubtel initiate response for {client_reference}: {response_data}")
 
             # Check if request was successful
             if response_data.get('responseCode') == '0000':
@@ -195,8 +195,15 @@ class HubtelPaymentService:
                 payment_transaction.mark_as_failed(error_message, callback_data)
                 return False, error_message, payment_transaction
 
-        except Exception as e:
-            return False, f"Error processing callback: {str(e)}", None
+        response_data = response.json()
+        logger.debug(f"Hubtel status check response for {client_reference}: {response_data}")
+
+        if response_data.get('responseCode') != '0000':
+            raise ValueError(
+                f"Hubtel status check non-success responseCode: {response_data.get('responseCode')}"
+            )
+
+        return response_data.get('data', {}) or {}
 
     def handle_callback(self, callback_data, request=None):
         """
@@ -262,7 +269,8 @@ class HubtelPaymentService:
 
     def check_payment_status(self, transaction):
         """
-        Query Hubtel API for payment status.
+        Query Hubtel API for payment status and apply updates to local
+        state based on the response.
 
         Args:
             transaction: PaymentTransaction instance
@@ -273,63 +281,31 @@ class HubtelPaymentService:
         Raises:
             requests.RequestException: If API call fails
         """
-        # Build status check URL
-        pos_sales_id = self.config['MERCHANT_ACCOUNT_NUMBER']
-        url = f"{self.config['STATUS_API_URL']}/{pos_sales_id}/status"
+        data = self._fetch_status(transaction.client_reference)
+        payment_status = data.get('status')  # 'Paid', 'Unpaid', 'Refunded'
 
-        params = {'clientReference': transaction.client_reference}
+        if payment_status == 'Paid':
+            transaction.hubtel_transaction_id = data.get('transactionId', '') or ''
+            transaction.network_transaction_id = data.get('externalTransactionId', '') or ''
+            transaction.payment_type = data.get('paymentMethod', '') or transaction.payment_type
+            transaction.charges = Decimal(str(data.get('charges', 0) or 0))
+            transaction.amount_after_charges = Decimal(str(data.get('amountAfterCharges', 0) or 0))
 
-        try:
-            response = requests.get(
-                url,
-                params=params,
-                headers={
-                    'Authorization': self.get_auth_header(),
-                    'Accept': 'application/json'
-                },
-                timeout=30
-            )
-            response.raise_for_status()
+            if transaction.status != 'success':
+                synthetic_callback = {'Data': data, 'ResponseCode': '0000', 'Status': 'Success'}
+                transaction.mark_as_success(synthetic_callback)
+            else:
+                transaction.save()
 
-            response_data = response.json()
-            logger.info(f"Hubtel status check response: {response_data}")
+        elif payment_status == 'Unpaid':
+            transaction.status = 'pending'
+            transaction.save()
 
-            # Check response
-            if response_data.get('responseCode') == '0000':
-                data = response_data.get('data', {})
-                status = data.get('status')  # 'Paid', 'Unpaid', 'Refunded'
+        elif payment_status == 'Refunded':
+            transaction.status = 'refunded'
+            transaction.save()
 
-                if status == 'Paid':
-                    # Update transaction with additional fields from status check
-                    transaction.hubtel_transaction_id = data.get('transactionId', '')
-                    transaction.network_transaction_id = data.get('externalTransactionId', '')
-                    transaction.payment_type = data.get('paymentMethod', '')
-                    transaction.charges = Decimal(str(data.get('charges', 0)))
-                    transaction.amount_after_charges = Decimal(str(data.get('amountAfterCharges', 0)))
-
-                    # Only mark as success if not already successful
-                    if transaction.status != 'success':
-                        callback_data = {'Data': data, 'ResponseCode': '0000', 'Status': 'Success'}
-                        transaction.mark_as_success(callback_data)
-                    else:
-                        # Just save the additional fields
-                        transaction.save()
-
-                elif status == 'Unpaid':
-                    # Still pending
-                    transaction.status = 'pending'
-                    transaction.save()
-
-                elif status == 'Refunded':
-                    # Refunded
-                    transaction.status = 'refunded'
-                    transaction.save()
-
-            return transaction
-
-        except requests.RequestException as e:
-            # Log error but don't update transaction
-            raise
+        return transaction
 
     def generate_client_reference(self, user_subscription):
         """
@@ -343,7 +319,13 @@ class HubtelPaymentService:
         return reference
 
     def validate_callback_ip(self, request):
-        """Validate that callback is from Hubtel's whitelisted IP"""
+        """
+        Validate that the callback originated from a whitelisted Hubtel IP.
+
+        Fail-closed: when WHITELISTED_IPS is non-empty, only those IPs are
+        allowed. When the allowlist is empty, fail open only if settings.DEBUG
+        is True; otherwise reject and log.
+        """
         whitelisted_ips = self.config.get('WHITELISTED_IPS', [])
 
         if not whitelisted_ips:
@@ -352,28 +334,35 @@ class HubtelPaymentService:
             logger.error("Hubtel callback rejected: HUBTEL_WHITELISTED_IPS is not configured.")
             return False
 
-        # Get client IP
+        # HTTP_X_FORWARDED_FOR is set by our reverse proxy (nginx → gunicorn);
+        # the leftmost entry is the original client IP. This is only safe
+        # because the request must traverse our trusted proxy before reaching
+        # this code path.
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
             ip = x_forwarded_for.split(',')[0].strip()
         else:
             ip = request.META.get('REMOTE_ADDR')
 
-        return ip in whitelisted_ips
+        if ip in whitelisted_ips:
+            return True
+
+        logger.warning(f"Hubtel webhook rejected: source IP {ip!r} not in allowlist")
+        return False
 
     def is_duplicate_callback(self, transaction, callback_data):
         """
-        Check if we've already processed this exact callback.
-        Uses callback_data hash comparison.
+        Check if this exact callback payload has already been processed for
+        a transaction that is already in a terminal state. Uses SHA-256 hash
+        comparison on the canonicalised JSON.
         """
-        if transaction.status in ['success', 'failed', 'refunded']:
-            # Transaction already in final state
-            callback_hash = hashlib.md5(
+        if transaction.status in ('success', 'failed', 'refunded'):
+            callback_hash = hashlib.sha256(
                 json.dumps(callback_data, sort_keys=True).encode()
             ).hexdigest()
 
             if transaction.callback_data:
-                existing_hash = hashlib.md5(
+                existing_hash = hashlib.sha256(
                     json.dumps(transaction.callback_data, sort_keys=True).encode()
                 ).hexdigest()
 
