@@ -1,11 +1,23 @@
-from django.test import TestCase
+from decimal import Decimal
+from unittest.mock import patch
+
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.test.client import RequestFactory
 from datetime import date, timedelta
+from rest_framework.test import APIRequestFactory, force_authenticate
+
 from core.models import Organization
-from subscriptions.models import Subscription, UserSubscription, PaymentTransaction
+from subscriptions.models import DirectDebit, Subscription, UserSubscription, PaymentTransaction
+from subscriptions.serializers.direct_debit_serializers import (
+    DirectDebitUpdateSerializer,
+    RegisterDirectDebitRequestSerializer,
+)
+from subscriptions.services.hubtel_service import HubtelPaymentService
+from subscriptions.views.direct_debit_views import DirectDebitViewSet
 from subscriptions.views.subscription_views import SubscriptionViewSet
+from wallet.models import MobileWallet
 
 User = get_user_model()
 
@@ -436,3 +448,243 @@ class SubscriptionViewsetTenantIsolationTests(TestCase):
     def test_member_queryset_only_returns_assigned_subscriptions_in_org(self):
         queryset = self._build_viewset(self.member_user).get_queryset()
         self.assertEqual(list(queryset), [])
+
+
+class DirectDebitImplementationTests(TestCase):
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="Direct Debit Org",
+            slug="direct-debit-org",
+            contact_email="dd@test.com",
+            contact_phone="0000000003",
+            code="D001",
+        )
+        self.user = User.objects.create_user(
+            username="dd_user",
+            email="dd@test.com",
+            password="password123",
+            organization=self.organization,
+            role="member",
+        )
+        self.subscription = Subscription.objects.create(
+            name="Direct Debit Subscription",
+            description="Direct debit checks",
+            amount=Decimal("100.00"),
+            start_date=date.today() - timedelta(days=1),
+            end_date=date.today() + timedelta(days=30),
+            organization=self.organization,
+            assignees_category="BOTH",
+            is_active=True,
+        )
+        self.user_subscription = UserSubscription.objects.get(
+            user=self.user,
+            subscription=self.subscription,
+        )
+        self.wallet = MobileWallet.objects.create(
+            name="Primary wallet",
+            user=self.user,
+            network="MTN",
+            account_number="233201234567",
+            is_active=True,
+            verified_at=timezone.now(),
+        )
+
+    def _direct_debit(self, **overrides):
+        attrs = {
+            "user": self.user,
+            "wallet": self.wallet,
+            "amount": Decimal("20.00"),
+            "period_type": "MONTHLY",
+            "user_subscription": self.user_subscription,
+            "next_payment_date": date.today(),
+            "hubtel_preapproval_id": "hubtel-preapproval-1",
+            "initiate_client_reference": "init-ref-1",
+            "approval_status": True,
+            "is_active": True,
+        }
+        attrs.update(overrides)
+        return DirectDebit.objects.create(**attrs)
+
+    @override_settings(DEBUG=False, HUBTEL_CONFIG={"WHITELISTED_IPS": []})
+    def test_empty_webhook_whitelist_rejects_outside_debug(self):
+        request = RequestFactory().post("/webhook", {}, REMOTE_ADDR="127.0.0.1")
+        self.assertFalse(HubtelPaymentService().validate_callback_ip(request))
+
+    @override_settings(DEBUG=True, HUBTEL_CONFIG={"WHITELISTED_IPS": []})
+    def test_empty_webhook_whitelist_allows_debug(self):
+        request = RequestFactory().post("/webhook", {}, REMOTE_ADDR="127.0.0.1")
+        self.assertTrue(HubtelPaymentService().validate_callback_ip(request))
+
+    @override_settings(DEBUG=False, HUBTEL_CONFIG={"WHITELISTED_IPS": ["10.0.0.1"]})
+    def test_webhook_whitelist_validates_request_ip(self):
+        allowed = RequestFactory().post("/webhook", {}, REMOTE_ADDR="10.0.0.1")
+        rejected = RequestFactory().post("/webhook", {}, REMOTE_ADDR="10.0.0.2")
+
+        service = HubtelPaymentService()
+        self.assertTrue(service.validate_callback_ip(allowed))
+        self.assertFalse(service.validate_callback_ip(rejected))
+
+    @patch("core.services.email_service.EmailService.send_payment_success_email")
+    def test_success_callback_replay_does_not_double_credit(self, send_email):
+        direct_debit = self._direct_debit()
+        transaction = PaymentTransaction.objects.create(
+            user_subscription=self.user_subscription,
+            user=self.user,
+            organization=self.organization,
+            direct_debit=direct_debit,
+            client_reference="dd-success-ref",
+            amount=Decimal("20.00"),
+            description="Direct debit",
+            status="pending",
+        )
+        callback = {
+            "ResponseCode": "0000",
+            "Data": {
+                "ClientReference": transaction.client_reference,
+                "TransactionId": "hubtel-tx-1",
+                "ExternalTransactionId": "external-1",
+                "Charges": "1.00",
+                "AmountAfterCharges": "19.00",
+            },
+        }
+
+        service = HubtelPaymentService()
+        first_success, _, _ = service.handle_direct_debit_charge_callback(callback)
+        second_callback = {**callback, "Data": {**callback["Data"], "Charges": "2.00"}}
+        second_success, second_message, _ = service.handle_direct_debit_charge_callback(second_callback)
+
+        self.user_subscription.refresh_from_db()
+        direct_debit.refresh_from_db()
+        self.assertTrue(first_success)
+        self.assertTrue(second_success)
+        self.assertEqual(second_message, "Callback already processed")
+        self.assertEqual(self.user_subscription.amount_paid, Decimal("20.00"))
+        self.assertEqual(direct_debit.consecutive_failed_charges, 0)
+        self.assertEqual(send_email.call_count, 1)
+
+    def test_failed_callback_replay_does_not_double_count_failure(self):
+        direct_debit = self._direct_debit()
+        transaction = PaymentTransaction.objects.create(
+            user_subscription=self.user_subscription,
+            user=self.user,
+            organization=self.organization,
+            direct_debit=direct_debit,
+            client_reference="dd-failed-ref",
+            amount=Decimal("20.00"),
+            description="Direct debit",
+            status="pending",
+        )
+        callback = {
+            "ResponseCode": "2001",
+            "Data": {
+                "ClientReference": transaction.client_reference,
+                "Description": "Insufficient funds",
+            },
+        }
+
+        service = HubtelPaymentService()
+        service.handle_direct_debit_charge_callback(callback)
+        service.handle_direct_debit_charge_callback(callback)
+
+        direct_debit.refresh_from_db()
+        self.assertEqual(direct_debit.consecutive_failed_charges, 1)
+
+    def test_charge_direct_debit_rejects_existing_inflight_charge(self):
+        direct_debit = self._direct_debit()
+        PaymentTransaction.objects.create(
+            user_subscription=self.user_subscription,
+            user=self.user,
+            organization=self.organization,
+            direct_debit=direct_debit,
+            client_reference="dd-inflight-ref",
+            amount=Decimal("20.00"),
+            description="Direct debit",
+            status="pending",
+        )
+
+        with self.assertRaisesMessage(ValueError, "already in progress"):
+            HubtelPaymentService().charge_direct_debit(direct_debit)
+
+    def test_direct_debit_amount_must_be_positive(self):
+        with self.assertRaisesMessage(Exception, "Amount must be greater than zero"):
+            self._direct_debit(amount=Decimal("0.00"))
+
+        update_serializer = DirectDebitUpdateSerializer(data={"amount": "0.00"})
+        self.assertFalse(update_serializer.is_valid())
+        self.assertIn("amount", update_serializer.errors)
+
+        request = RequestFactory().post("/direct-debits/register")
+        request.user = self.user
+        register_serializer = RegisterDirectDebitRequestSerializer(
+            data={
+                "subscription_id": str(self.subscription.id),
+                "wallet_id": str(self.wallet.id),
+                "amount": "-1.00",
+                "period_type": "MONTHLY",
+            },
+            context={"request": request},
+        )
+        self.assertFalse(register_serializer.is_valid())
+        self.assertIn("amount", register_serializer.errors)
+
+    def test_destroy_soft_deactivates_direct_debit(self):
+        direct_debit = self._direct_debit()
+        request = APIRequestFactory().delete(f"/direct-debits/{direct_debit.id}")
+        force_authenticate(request, user=self.user)
+        response = DirectDebitViewSet.as_view({"delete": "destroy"})(
+            request, pk=direct_debit.id
+        )
+
+        direct_debit.refresh_from_db()
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(direct_debit.is_active)
+        self.assertTrue(DirectDebit.objects.filter(id=direct_debit.id).exists())
+
+    def test_fully_paid_subscription_deactivates_mandate(self):
+        direct_debit = self._direct_debit()
+        self.user_subscription.amount_paid = self.subscription.amount
+        self.user_subscription.status = "fully_paid"
+        self.user_subscription.save(update_fields=["amount_paid", "status"])
+
+        with self.assertRaisesMessage(ValueError, "already fully paid"):
+            HubtelPaymentService().charge_direct_debit(direct_debit)
+
+        direct_debit.refresh_from_db()
+        self.assertFalse(direct_debit.is_active)
+
+    def test_preapproval_callback_rejects_mismatched_identifiers(self):
+        direct_debit = self._direct_debit()
+        service = HubtelPaymentService()
+
+        success, message, _ = service.handle_direct_debit_preapproval_callback({
+            "ClientReferenceId": direct_debit.initiate_client_reference,
+            "PreapprovalStatus": "APPROVED",
+            "HubtelPreapprovalId": "different-id",
+            "CustomerMsisdn": self.wallet.account_number,
+        })
+        self.assertFalse(success)
+        self.assertEqual(message, "HubtelPreapprovalId mismatch")
+
+        success, message, _ = service.handle_direct_debit_preapproval_callback({
+            "ClientReferenceId": direct_debit.initiate_client_reference,
+            "PreapprovalStatus": "APPROVED",
+            "HubtelPreapprovalId": direct_debit.hubtel_preapproval_id,
+            "CustomerMsisdn": "233209999999",
+        })
+        self.assertFalse(success)
+        self.assertEqual(message, "CustomerMsisdn mismatch")
+
+    def test_preapproval_callback_with_matching_identifiers_approves(self):
+        direct_debit = self._direct_debit(approval_status=False)
+
+        success, message, _ = HubtelPaymentService().handle_direct_debit_preapproval_callback({
+            "ClientReferenceId": direct_debit.initiate_client_reference,
+            "PreapprovalStatus": "APPROVED",
+            "HubtelPreapprovalId": direct_debit.hubtel_preapproval_id,
+            "CustomerMsisdn": self.wallet.account_number,
+        })
+
+        direct_debit.refresh_from_db()
+        self.assertTrue(success)
+        self.assertEqual(message, "Preapproval approved")
+        self.assertTrue(direct_debit.approval_status)

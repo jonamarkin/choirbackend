@@ -13,6 +13,7 @@ from decimal import Decimal
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 
 from subscriptions.models import PaymentTransaction, UserSubscription, DirectDebit
@@ -158,9 +159,48 @@ class HubtelPaymentService:
             transaction.save()
             raise
 
+    def _process_callback(self, callback_data, *, succeeded, error_message, extra_fields=None):
+        """
+        Shared callback core: locate the transaction by ClientReference, de-dupe, then
+        transition its state. Provider-specific handlers parse the payload (success predicate
+        and field mapping) and delegate here so the common flow lives in one place.
+
+        Returns:
+            Tuple (success: bool, message: str, transaction: PaymentTransaction or None)
+        """
+        try:
+            client_reference = callback_data.get('Data', {}).get('ClientReference')
+            if not client_reference:
+                return False, "Missing ClientReference in callback", None
+
+            with transaction.atomic():
+                try:
+                    payment_transaction = PaymentTransaction.objects.select_for_update().get(
+                        client_reference=client_reference
+                    )
+                except PaymentTransaction.DoesNotExist:
+                    return False, f"Transaction not found: {client_reference}", None
+
+                if payment_transaction.status in ['success', 'failed', 'expired', 'cancelled', 'refunded']:
+                    return True, "Callback already processed", payment_transaction
+
+                # Apply any provider-specific fields parsed from the callback.
+                for field, value in (extra_fields or {}).items():
+                    setattr(payment_transaction, field, value)
+
+                if succeeded:
+                    payment_transaction.mark_as_success(callback_data)
+                    return True, "Payment processed successfully", payment_transaction
+
+                payment_transaction.mark_as_failed(error_message, callback_data)
+                return False, error_message, payment_transaction
+
+        except Exception as e:
+            return False, f"Error processing callback: {str(e)}", None
+
     def handle_callback(self, callback_data, request=None):
         """
-        Process Hubtel payment callback.
+        Process a Hubtel Online Checkout payment callback.
 
         Args:
             callback_data: Dict containing callback data from Hubtel
@@ -169,53 +209,56 @@ class HubtelPaymentService:
         Returns:
             Tuple (success: bool, message: str, transaction: PaymentTransaction or None)
         """
-        try:
-            # Validate IP address if request provided
-            # if request and not self.validate_callback_ip(request):
-            #     return False, "Invalid IP address", None
+        # Validate IP address if request provided
+        # if request and not self.validate_callback_ip(request):
+        #     return False, "Invalid IP address", None
 
-            # Extract client reference
-            client_reference = callback_data.get('Data', {}).get('ClientReference')
-            if not client_reference:
-                return False, "Missing ClientReference in callback", None
+        data = callback_data.get('Data', {})
+        succeeded = (
+            callback_data.get('ResponseCode') == '0000'
+            and callback_data.get('Status') == 'Success'
+            and data.get('Status') == 'Success'
+        )
+        result = self._process_callback(
+            callback_data,
+            succeeded=succeeded,
+            error_message=data.get('Description', 'Payment failed'),
+        )
 
-            # Find transaction
+        # Checkout-specific enrichment: pull extra fields from the status API (non-blocking).
+        success, _, transaction = result
+        if success and transaction and transaction.status == 'success':
             try:
-                transaction = PaymentTransaction.objects.get(
-                    client_reference=client_reference
-                )
-            except PaymentTransaction.DoesNotExist:
-                return False, f"Transaction not found: {client_reference}", None
+                self.check_payment_status(transaction)
+            except Exception as e:
+                logger.warning(f"Status check failed after callback success: {e}")
 
-            # Check for duplicate callback
-            if self.is_duplicate_callback(transaction, callback_data):
-                return True, "Duplicate callback (already processed)", transaction
+        return result
 
-            # Process callback based on status
-            response_code = callback_data.get('ResponseCode')
-            status = callback_data.get('Status')
-            data = callback_data.get('Data', {})
+    def handle_direct_debit_charge_callback(self, callback_data):
+        """
+        Process the asynchronous callback for a direct-debit charge.
 
-            if response_code == '0000' and status == 'Success' and data.get('Status') == 'Success':
-                # Payment successful
-                transaction.mark_as_success(callback_data)
+        Unlike the checkout callback, success is determined solely by ResponseCode == '0000'
+        ('2001' = failed); the payload has no top-level Status and carries flat Data fields.
 
-                # Fetch additional fields from status check (non-blocking)
-                try:
-                    self.check_payment_status(transaction)
-                except Exception as e:
-                    logger.warning(f"Status check failed after callback success: {e}")
-
-                return True, "Payment processed successfully", transaction
-
-            else:
-                # Payment failed
-                error_message = data.get('Description', 'Payment failed')
-                transaction.mark_as_failed(error_message, callback_data)
-                return False, error_message, transaction
-
-        except Exception as e:
-            return False, f"Error processing callback: {str(e)}", None
+        Returns:
+            Tuple (success: bool, message: str, transaction: PaymentTransaction or None)
+        """
+        data = callback_data.get('Data', {})
+        succeeded = callback_data.get('ResponseCode') == '0000'
+        extra_fields = {
+            'hubtel_transaction_id': data.get('TransactionId', ''),
+            'network_transaction_id': data.get('ExternalTransactionId', ''),
+            'charges': Decimal(str(data.get('Charges', 0))),
+            'amount_after_charges': Decimal(str(data.get('AmountAfterCharges', 0))),
+        }
+        return self._process_callback(
+            callback_data,
+            succeeded=succeeded,
+            error_message=data.get('Description', 'Direct debit charge failed'),
+            extra_fields=extra_fields,
+        )
 
     def check_payment_status(self, transaction):
         """
@@ -304,8 +347,10 @@ class HubtelPaymentService:
         whitelisted_ips = self.config.get('WHITELISTED_IPS', [])
 
         if not whitelisted_ips:
-            # If no IPs configured, allow all (for development)
-            return True
+            if settings.DEBUG:
+                return True
+            logger.error("Hubtel callback rejected: HUBTEL_WHITELISTED_IPS is not configured.")
+            return False
 
         # Get client IP
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -385,7 +430,7 @@ class HubtelPaymentService:
                     "clientReferenceId": client_reference,
                     "customerMsisdn": client_account_number,
                     "channel": channel,
-                    "callbackUrl": self.config['DIRECT_DEBIT_CALLBACK_URL'],
+                    "callbackUrl": self.config['DIRECT_DEBIT_REGISTER_CALLBACK_URL'],
                 },
                 headers={
                     'Authorization': self.get_auth_header(),
@@ -473,3 +518,174 @@ class HubtelPaymentService:
         except requests.RequestException as e:
             logger.warning("Failed to check Hubtel direct debit preapproval status: %s", e)
             return False
+
+    def handle_direct_debit_preapproval_callback(self, callback_data):
+        """
+        Process Hubtel's asynchronous preapproval (registration) callback.
+
+        Identifies the mandate by ClientReferenceId (DirectDebit.initiate_client_reference) and
+        marks it approved when PreapprovalStatus == 'APPROVED'. Idempotent: a re-delivered
+        APPROVED callback does not re-seed next_payment_date.
+
+        Returns:
+            Tuple (success: bool, message: str, direct_debit: DirectDebit or None)
+        """
+        client_reference = callback_data.get('ClientReferenceId')
+        if not client_reference:
+            return False, "Missing ClientReferenceId in callback", None
+
+        direct_debit = DirectDebit.objects.filter(
+            initiate_client_reference=client_reference
+        ).first()
+        if not direct_debit:
+            return False, f"Direct debit not found: {client_reference}", None
+
+        if callback_data.get('PreapprovalStatus') == 'APPROVED':
+            hubtel_preapproval_id = callback_data.get('HubtelPreapprovalId')
+            if hubtel_preapproval_id and hubtel_preapproval_id != direct_debit.hubtel_preapproval_id:
+                logger.warning(
+                    "Rejected preapproval callback for %s: HubtelPreapprovalId mismatch.",
+                    direct_debit.id,
+                )
+                return False, "HubtelPreapprovalId mismatch", direct_debit
+
+            customer_msisdn = callback_data.get('CustomerMsisdn')
+            if customer_msisdn and customer_msisdn != direct_debit.wallet.account_number:
+                logger.warning(
+                    "Rejected preapproval callback for %s: CustomerMsisdn mismatch.",
+                    direct_debit.id,
+                )
+                return False, "CustomerMsisdn mismatch", direct_debit
+
+            if not direct_debit.approval_status:
+                direct_debit.mark_approved()
+            return True, "Preapproval approved", direct_debit
+
+        return (
+            False,
+            f"Preapproval not approved: {callback_data.get('PreapprovalStatus')}",
+            direct_debit,
+        )
+
+    def charge_direct_debit(self, direct_debit, metadata=None):
+        """
+        Charge an approved direct-debit mandate via Hubtel's Receive Money (RMP) endpoint.
+
+        Mirrors initiate_payment: validate locally, create a PaymentTransaction, POST to Hubtel,
+        then handle the response. The RMP endpoint is asynchronous — a ResponseCode of '0001'
+        means the charge was accepted and is pending; the final state arrives on
+        DIRECT_DEBIT_CHARGE_CALLBACK_URL (see handle_direct_debit_charge_callback).
+
+        Args:
+            direct_debit: DirectDebit instance (an approved, active mandate)
+            metadata: Optional metadata dict stored on the PaymentTransaction
+
+        Returns:
+            PaymentTransaction (status 'pending' once Hubtel accepts the charge)
+
+        Raises:
+            ValueError: If validation fails or Hubtel rejects the charge
+            requests.RequestException: If the API call fails
+        """
+        from subscriptions.models import PaymentTransaction
+
+        terminal_skip_message = None
+        with transaction.atomic():
+            direct_debit = DirectDebit.objects.select_for_update().select_related(
+                'wallet', 'user_subscription__subscription', 'user'
+            ).get(pk=direct_debit.pk)
+
+            # --- validation (analogues of initiate_payment's guards) ---
+            if not direct_debit.is_active:
+                raise ValueError("Direct debit is not active.")
+            if not direct_debit.approval_status:
+                raise ValueError("Direct debit mandate is not approved.")
+
+            wallet = direct_debit.wallet
+            # Charge-time wallet gate — the check deferred from DirectDebit.clean().
+            if not wallet.is_active or wallet.verified_at is None:
+                raise ValueError("Wallet must be active and verified.")
+
+            user_subscription = direct_debit.user_subscription
+            can_pay, message = user_subscription.can_make_payment()
+            if not can_pay:
+                if user_subscription.status in ['fully_paid', 'refunded']:
+                    direct_debit.deactivate()
+                    terminal_skip_message = message
+                else:
+                    raise ValueError(message)
+
+            if terminal_skip_message is None:
+                amount = Decimal(str(direct_debit.amount))
+                if amount <= 0:
+                    raise ValueError("Charge amount must be greater than zero.")
+                outstanding = user_subscription.get_outstanding_amount()
+                if amount > outstanding:
+                    amount = outstanding  # never debit more than is owed (mirror initiate_payment cap)
+
+                # Idempotency: don't start a second charge while one is in flight.
+                if PaymentTransaction.objects.filter(
+                    direct_debit=direct_debit, status__in=['initiated', 'pending']
+                ).exists():
+                    raise ValueError("A charge for this direct debit is already in progress.")
+
+                client_reference = self.generate_client_reference(user_subscription)
+                channel = self.get_direct_debit_channel(wallet)
+
+                payment_transaction = PaymentTransaction.objects.create(
+                    user_subscription=user_subscription,
+                    user=direct_debit.user,
+                    organization=user_subscription.subscription.organization,
+                    direct_debit=direct_debit,
+                    client_reference=client_reference,
+                    amount=amount,
+                    description=f"{user_subscription.subscription.name} - Direct Debit",
+                    status='initiated',
+                    metadata=metadata or {},
+                )
+
+        if terminal_skip_message is not None:
+            raise ValueError(terminal_skip_message)
+
+        payload = {
+            # "CustomerName": f"{direct_debit.user.first_name} {direct_debit.user.last_name}".strip(),
+            "CustomerMsisdn": wallet.account_number,
+            # "CustomerEmail": direct_debit.user.email,
+            "Channel": channel,
+            "Amount": float(amount),
+            "PrimaryCallbackUrl": self.config['DIRECT_DEBIT_CHARGE_CALLBACK_URL'],
+            "Description": payment_transaction.description,
+            "ClientReference": client_reference,
+            # "HubtelPreApprovalId": direct_debit.hubtel_preapproval_id,
+        }
+
+        try:
+            response = requests.post(
+                self.config['DIRECT_DEBIT_PAYMENT_URL'],
+                json=payload,
+                headers={
+                    'Authorization': self.get_auth_header(),
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            logger.info("Hubtel direct debit charge response: %s", response_data)
+
+            # '0001' = accepted & pending (final state via callback); '0000' if ever sync-success.
+            if response_data.get('ResponseCode') in ('0001', '0000'):
+                data = response_data.get('Data', {})
+                payment_transaction.hubtel_transaction_id = data.get('TransactionId', '')
+                payment_transaction.status = 'pending'
+                payment_transaction.save(update_fields=['hubtel_transaction_id', 'status', 'updated_at'])
+                return payment_transaction
+
+            error_message = response_data.get('Message', 'Unknown error from Hubtel')
+            payment_transaction.mark_as_failed(error_message, response_data)
+            raise ValueError(f"Hubtel direct debit charge failed: {error_message}")
+
+        except requests.RequestException as e:
+            payment_transaction.mark_as_failed(str(e))
+            raise

@@ -215,6 +215,23 @@ class PaymentWebhookSerializer(serializers.Serializer):
         return value
 
 
+class DirectDebitChargeWebhookSerializer(serializers.Serializer):
+    """
+    Serializer for validating Hubtel direct-debit charge callbacks.
+
+    The charge callback differs from the checkout callback: there is no top-level Status,
+    and success is conveyed solely by ResponseCode ('0000' success, '2001' failed).
+    """
+    ResponseCode = serializers.CharField(required=True)
+    Message = serializers.CharField(required=False, allow_blank=True)
+    Data = serializers.DictField(required=True)
+
+    def validate_Data(self, value):
+        if 'ClientReference' not in value:
+            raise serializers.ValidationError("Missing required field in Data: ClientReference")
+        return value
+
+
 class PaymentStatusSerializer(serializers.Serializer):
     """
     Serializer for payment status response.

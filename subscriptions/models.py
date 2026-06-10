@@ -266,12 +266,21 @@ class PaymentTransaction(TimestampedModel):
         related_name='payment_transactions',
         help_text="Denormalized for multi-tenant queries"
     )
+    direct_debit = models.ForeignKey(
+        'DirectDebit',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment_transactions',
+        help_text="Set when this transaction is an automated direct-debit charge"
+    )
 
     # Hubtel Transaction Identifiers
     checkout_id = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Hubtel's checkout ID from initiate response"
+        help_text="Hubtel's checkout ID from initiate response",
+        null=True
     )
     client_reference = models.CharField(
         max_length=255,
@@ -424,6 +433,16 @@ class PaymentTransaction(TimestampedModel):
             models.Index(fields=['initiated_at']),
             models.Index(fields=['confirmed_at']),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['direct_debit'],
+                condition=(
+                    models.Q(direct_debit__isnull=False)
+                    & models.Q(status__in=['initiated', 'pending'])
+                ),
+                name='uniq_inflight_tx_per_direct_debit',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.client_reference} - {self.amount} {self.currency} ({self.status})"
@@ -458,6 +477,10 @@ class PaymentTransaction(TimestampedModel):
         # Update UserSubscription
         self.user_subscription.process_payment(self.amount, self.client_reference)
 
+        # Advance the mandate schedule for automated direct-debit charges.
+        if self.direct_debit_id:
+            self.direct_debit.mark_charged()
+
         if self.user and self.user.email:
             EmailService.send_payment_success_email(
                 email=self.user.email,
@@ -478,6 +501,10 @@ class PaymentTransaction(TimestampedModel):
         if callback_data:
             self.callback_data = callback_data
         self.save()
+
+        # Count failures against the mandate for automated direct-debit charges.
+        if self.direct_debit_id:
+            self.direct_debit.register_failed_charge()
 
 
 class DirectDebit(TimestampedModel):
@@ -502,6 +529,12 @@ class DirectDebit(TimestampedModel):
     otp_prefix = models.CharField(max_length=10, blank=True)
     approval_status = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    consecutive_failed_charges = models.PositiveIntegerField(
+        default=0,
+        help_text="Consecutive failed charge attempts; the mandate is deactivated at the cap."
+    )
+
+    MAX_CONSECUTIVE_FAILURES = 3
 
     class Meta:
         db_table = 'direct_debits'
@@ -558,6 +591,9 @@ class DirectDebit(TimestampedModel):
                     {'user_subscription': 'An active direct debit already exists for this subscription.'}
                 )
 
+        if self.amount is not None and self.amount <= 0:
+            raise ValidationError({'amount': 'Amount must be greater than zero.'})
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
@@ -568,3 +604,28 @@ class DirectDebit(TimestampedModel):
         self.next_payment_date = AutoDebitPeriodTypes.next_date(self.period_type)
         self.save(update_fields=['approval_status', 'next_payment_date', 'updated_at'])
 
+    def mark_charged(self):
+        """Advance the schedule after a confirmed charge and reset the failure streak."""
+        from django.utils import timezone
+
+        self.previous_payment_date = self.next_payment_date or timezone.now().date()
+        self.next_payment_date = AutoDebitPeriodTypes.next_date(self.period_type)
+        self.consecutive_failed_charges = 0
+        self.save(update_fields=[
+            'previous_payment_date', 'next_payment_date',
+            'consecutive_failed_charges', 'updated_at',
+        ])
+
+    def register_failed_charge(self):
+        """Record a failed charge; deactivate the mandate once it hits the failure cap."""
+        self.consecutive_failed_charges += 1
+        if self.consecutive_failed_charges >= self.MAX_CONSECUTIVE_FAILURES:
+            self.is_active = False
+        self.save(update_fields=['consecutive_failed_charges', 'is_active', 'updated_at'])
+
+    def deactivate(self):
+        """Deactivate the mandate locally without deleting its audit trail."""
+        if not self.is_active:
+            return
+        self.is_active = False
+        self.save(update_fields=['is_active', 'updated_at'])

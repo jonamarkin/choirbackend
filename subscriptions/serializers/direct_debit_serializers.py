@@ -17,6 +17,11 @@ class RegisterDirectDebitRequestSerializer(serializers.Serializer):
         except ValueError:
             raise serializers.ValidationError('Invalid period type.')
 
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Amount must be greater than zero.')
+        return value
+
     def validate_wallet_id(self, value):
         user = self.context['request'].user
         wallet = MobileWallet.objects.filter(id=value, user=user).first()
@@ -34,6 +39,17 @@ class RegisterDirectDebitRequestSerializer(serializers.Serializer):
         if user_subscription is None:
             raise serializers.ValidationError('You are not subscribed to this subscription.')
         return user_subscription
+
+    def validate(self, attrs):
+        # Reject duplicates before calling Hubtel, so we never leave an orphaned remote
+        # mandate that the model's partial unique constraint would refuse to persist.
+        if DirectDebit.objects.filter(
+            user_subscription=attrs['subscription_id'], is_active=True
+        ).exists():
+            raise serializers.ValidationError(
+                'An active direct debit already exists for this subscription.'
+            )
+        return attrs
 
 
 class DirectDebitListSerializer(serializers.ModelSerializer):
@@ -90,6 +106,11 @@ class DirectDebitUpdateSerializer(serializers.ModelSerializer):
         model = DirectDebit
         fields = ['amount']
 
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Amount must be greater than zero.')
+        return value
+
 
 class DirectDebitStatusRequestSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=True)
@@ -97,3 +118,16 @@ class DirectDebitStatusRequestSerializer(serializers.Serializer):
 
 class DirectDebitOtpVerificationRequestSerializer(serializers.Serializer):
     otp = serializers.CharField(required=True)
+
+
+class DirectDebitPreapprovalWebhookSerializer(serializers.Serializer):
+    """
+    Validates Hubtel's asynchronous preapproval (registration) callback. The payload is flat
+    PascalCase (not wrapped in Data), and identifies the mandate via ClientReferenceId.
+    """
+    ClientReferenceId = serializers.CharField(required=True)
+    PreapprovalStatus = serializers.CharField(required=True)
+    HubtelPreapprovalId = serializers.CharField(required=False, allow_blank=True)
+    VerificationType = serializers.CharField(required=False, allow_blank=True)
+    CustomerMsisdn = serializers.CharField(required=False, allow_blank=True)
+    CreatedAt = serializers.CharField(required=False, allow_blank=True)

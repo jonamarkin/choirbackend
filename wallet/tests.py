@@ -106,7 +106,7 @@ class WalletAPITests(APITestCase):
         self.assertIn('account_number', response.data)
 
     def test_direct_create_endpoint_is_disabled(self):
-        response = self.client.post('/api/v1/wallets', self.wallet_payload(), format='json')
+        response = self.client.post('/api/v1/wallets/', self.wallet_payload(), format='json')
 
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -128,7 +128,7 @@ class WalletAPITests(APITestCase):
             is_active=True,
         )
 
-        response = self.client.get('/api/v1/wallets')
+        response = self.client.get('/api/v1/wallets/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)

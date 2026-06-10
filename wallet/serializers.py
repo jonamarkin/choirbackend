@@ -95,6 +95,14 @@ class WalletUpdateSerializer(serializers.ModelSerializer):
         model = MobileWallet
         fields = ['name', 'description']
 
+    def to_internal_value(self, data):
+        invalid_fields = set(data) - set(self.fields)
+        if invalid_fields:
+            raise serializers.ValidationError({
+                field: 'This field cannot be updated.' for field in invalid_fields
+            })
+        return super().to_internal_value(data)
+
 
 class WalletReactivationOTPRequestSerializer(serializers.Serializer):
     pass

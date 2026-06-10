@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from celery.schedules import crontab
 from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -106,6 +107,21 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Accra'
 USE_I18N = True
 USE_TZ = True
+
+# Celery
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=config('REDIS_URL', default='redis://localhost:6379/0'))
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=CELERY_BROKER_URL)
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+CELERY_BEAT_SCHEDULE = {
+    'charge-due-direct-debits': {
+        'task': 'subscriptions.tasks.charge_due_direct_debits',
+        'schedule': crontab(hour=13, minute=0),  # 13:00 Africa/Accra
+    },
+}
 
 # Static files
 STATIC_URL = 'static/'
@@ -224,12 +240,14 @@ HUBTEL_CONFIG = {
     'DIRECT_DEBIT_REGISTRATION_URL': f'https://preapproval.hubtel.com/api/v2/merchant/{config('HUBTEL_MERCHANT_ACCOUNT_NUMBER')}/preapproval/initiate',
     'DIRECT_DEBIT_OTP_VERIFY_URL': f'https://preapproval.hubtel.com/api/v2/merchant/{config('HUBTEL_MERCHANT_ACCOUNT_NUMBER')}/preapproval/verifyotp',
     'DIRECT_DEBIT_PREAPPROVAL_STATUS_URL': f'https://preapproval.hubtel.com/api/v2/merchant/{config("HUBTEL_MERCHANT_ACCOUNT_NUMBER")}/preapproval',
+    'DIRECT_DEBIT_PAYMENT_URL': f'https://rmp.hubtel.com/merchantaccount/merchants/{config('HUBTEL_MERCHANT_ACCOUNT_NUMBER')}/receive/mobilemoney',
 
     # Webhook URLs
     'CALLBACK_URL': config('HUBTEL_CALLBACK_URL', default=''),
     'RETURN_URL': config('HUBTEL_RETURN_URL', default=''),
     'CANCELLATION_URL': config('HUBTEL_CANCELLATION_URL', default=''),
-    'DIRECT_DEBIT_CALLBACK_URL': config('HUBTEL_DIRECT_DEBIT_CALLBACK_URL', default=''),
+    'DIRECT_DEBIT_REGISTER_CALLBACK_URL': config('HUBTEL_DIRECT_DEBIT_REGISTER_CALLBACK_URL', default=''),
+    'DIRECT_DEBIT_CHARGE_CALLBACK_URL': config('HUBTEL_DIRECT_DEBIT_CHARGE_CALLBACK_URL', default=''),
 
     # IP Whitelist
     'WHITELISTED_IPS': [

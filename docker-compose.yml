@@ -12,6 +12,11 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
   web:
     build: .
     command: daphne -b 0.0.0.0 -p 8000 choirbackend.asgi:application
@@ -22,8 +27,36 @@ services:
     environment:
       - DEBUG=1
       - DATABASE_URL=postgres://postgres:postgres@db:5432/choir_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - db
+      - redis
+
+  worker:
+    build: .
+    command: celery -A choirbackend worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/choir_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  beat:
+    build: .
+    command: celery -A choirbackend beat -l info --schedule /tmp/celerybeat-schedule
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/choir_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
 
 volumes:
   postgres_data:
