@@ -6,6 +6,7 @@ from subscriptions.serializers.payment_serializers import (
     PaymentInitiateSerializer,
     PaymentInitiateResponseSerializer,
     PaymentWebhookSerializer,
+    DirectDebitChargeWebhookSerializer,
     PaymentStatusSerializer,
     UserSubscriptionPaymentInfoSerializer,
 )
@@ -21,6 +22,7 @@ __all__ = [
     'PaymentInitiateSerializer',
     'PaymentInitiateResponseSerializer',
     'PaymentWebhookSerializer',
+    'DirectDebitChargeWebhookSerializer',
     'PaymentStatusSerializer',
     'UserSubscriptionPaymentInfoSerializer',
 ]

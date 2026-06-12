@@ -12,19 +12,57 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7
+    restart: always
+    volumes:
+      - redis_data:/data
+
   web:
     build: .
     restart: always
     env_file:
       - .env.prod
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     expose:
       - "8000"
+
+  worker:
+    build: .
+    restart: always
+    command: celery -A choirbackend worker -l info
+    env_file:
+      - .env.prod
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  beat:
+    build: .
+    restart: always
+    command: celery -A choirbackend beat -l info --schedule /tmp/celerybeat-schedule
+    env_file:
+      - .env.prod
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   nginx:
     image: nginx:alpine
@@ -45,3 +83,4 @@ volumes:
   postgres_data:
   static_files:
   media_files:
+  redis_data:

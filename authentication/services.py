@@ -8,7 +8,7 @@ from communication.services.sms_service import SMSService
 
 class OTPService:
     @staticmethod
-    def generate_otp(target, purpose, user=None, channel='email'):
+    def generate_otp(target, purpose, user=None, channel='email', strict_delivery=False):
         """
         Generate a new OTP for the given target.
         Expires in 10 minutes.
@@ -36,7 +36,10 @@ class OTPService:
         # Send via Channel
         if channel == 'email' or channel == 'both':
             if '@' in target: # Simple check to avoid sending email to phone number
-                 EmailService.send_otp_email(target, code, purpose)
+                 email_sent = EmailService.send_otp_email(target, code, purpose)
+                 if strict_delivery and email_sent is False:
+                     otp.delete()
+                     raise ValueError('Failed to send OTP email.')
             
         if channel == 'sms' or channel == 'both':
              # If target is phone number or we have user's phone
@@ -46,7 +49,10 @@ class OTPService:
                  
              if phone and not '@' in phone: # explicit phone check
                  message = f"Your {purpose.replace('_', ' ')} code is: {code}. Expires in 10 mins."
-                 SMSService.send_sms(phone, message)
+                 sms_sent = SMSService.send_sms(phone, message)
+                 if strict_delivery and sms_sent is False:
+                     otp.delete()
+                     raise ValueError('Failed to send OTP SMS.')
              
         return otp
 

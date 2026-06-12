@@ -1,11 +1,12 @@
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 from authentication.models import User
 from core.models import Organization, TenantAwareModel, TimestampedModel
 from subscriptions.utils.assignees_categorizations import AssigneesCategorizations
+from subscriptions.utils.auto_debit_period_types import AutoDebitPeriodTypes
+from wallet.models import MobileWallet
 
 
 class Subscription(TenantAwareModel, TimestampedModel):
@@ -86,48 +87,6 @@ class Subscription(TenantAwareModel, TimestampedModel):
         else:  # BOTH
             # All users
             return base_query
-
-
-@receiver(post_save, sender=Subscription)
-def auto_assign_subscription(sender, instance, created, **kwargs):
-    """
-    Signal to automatically assign subscription to users when created.
-    """
-    if created:
-        # Automatically assign to eligible users when subscription is created
-        instance.assign_to_users()
-
-
-@receiver(post_save, sender=User)
-def auto_assign_existing_subscriptions_to_user(sender, instance, created, **kwargs):
-    """
-    Ensure users are assigned to already-existing active subscriptions.
-
-    Why this is needed:
-    - New users can be created before their organization is attached.
-    - Registration/social flows may set organization on a later save.
-    - Without this hook, those users can miss backfilled subscription assignment.
-    """
-    if kwargs.get('raw'):
-        return
-
-    if not instance.organization:
-        return
-
-    # On updates, skip obvious unrelated partial updates for efficiency.
-    # If update_fields is None (full save), we still run because organization
-    # and role may have changed.
-    if not created:
-        update_fields = kwargs.get('update_fields')
-        if update_fields is not None:
-            relevant_fields = {'organization', 'role', 'is_active'}
-            if relevant_fields.isdisjoint(set(update_fields)):
-                return
-
-    from subscriptions.services.subscription_service import assign_subscriptions_to_user
-    assign_subscriptions_to_user(instance)
-
-
 
 
 class UserSubscription(TimestampedModel):
@@ -307,12 +266,21 @@ class PaymentTransaction(TimestampedModel):
         related_name='payment_transactions',
         help_text="Denormalized for multi-tenant queries"
     )
+    direct_debit = models.ForeignKey(
+        'DirectDebit',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment_transactions',
+        help_text="Set when this transaction is an automated direct-debit charge"
+    )
 
     # Hubtel Transaction Identifiers
     checkout_id = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Hubtel's checkout ID from initiate response"
+        help_text="Hubtel's checkout ID from initiate response",
+        null=True
     )
     client_reference = models.CharField(
         max_length=255,
@@ -465,6 +433,16 @@ class PaymentTransaction(TimestampedModel):
             models.Index(fields=['initiated_at']),
             models.Index(fields=['confirmed_at']),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['direct_debit'],
+                condition=(
+                    models.Q(direct_debit__isnull=False)
+                    & models.Q(status__in=['initiated', 'pending'])
+                ),
+                name='uniq_inflight_tx_per_direct_debit',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.client_reference} - {self.amount} {self.currency} ({self.status})"
@@ -482,45 +460,37 @@ class PaymentTransaction(TimestampedModel):
         from django.utils import timezone
         from core.services.email_service import EmailService
 
-        with db_transaction.atomic():
-            self.status = 'success'
-            self.confirmed_at = timezone.now()
-            self.callback_received_at = timezone.now()
+        self.status = 'success'
+        self.confirmed_at = timezone.now()
+        self.callback_received_at = timezone.now()
 
-            if callback_data:
-                self.callback_data = callback_data
-                # Extract payment details from callback
-                payment_details = callback_data.get('Data', {}).get('PaymentDetails', {})
-                self.payment_channel = payment_details.get('Channel', '')
-                self.payment_type = payment_details.get('PaymentType', '')
-                self.customer_mobile_number = payment_details.get('MobileMoneyNumber', '')
-                self.sales_invoice_id = callback_data.get('Data', {}).get('SalesInvoiceId', '')
+        if callback_data:
+            self.callback_data = callback_data
+            # Extract payment details from callback
+            payment_details = callback_data.get('Data', {}).get('PaymentDetails', {})
+            self.payment_channel = payment_details.get('Channel', '')
+            self.payment_type = payment_details.get('PaymentType', '')
+            self.customer_mobile_number = payment_details.get('MobileMoneyNumber', '')
+            self.sales_invoice_id = callback_data.get('Data', {}).get('SalesInvoiceId', '')
 
-            self.save()
+        self.save()
 
-            # Update UserSubscription
-            self.user_subscription.process_payment(self.amount, self.client_reference)
+        # Update UserSubscription
+        self.user_subscription.process_payment(self.amount, self.client_reference)
 
-            if self.user and self.user.email:
-                # Defer SMTP until after the surrounding transaction commits,
-                # so a slow mail backend cannot stall the webhook response and
-                # a rolled-back transaction never sends a misleading email.
-                email = self.user.email
-                first_name = self.user.first_name
-                subscription_name = self.user_subscription.subscription.name
-                amount_str = str(self.amount)
-                currency = self.currency
-                reference = self.client_reference
-                db_transaction.on_commit(
-                    lambda: EmailService.send_payment_success_email(
-                        email=email,
-                        first_name=first_name,
-                        subscription_name=subscription_name,
-                        amount=amount_str,
-                        currency=currency,
-                        reference=reference,
-                    )
-                )
+        # Advance the mandate schedule for automated direct-debit charges.
+        if self.direct_debit_id:
+            self.direct_debit.mark_charged()
+
+        if self.user and self.user.email:
+            EmailService.send_payment_success_email(
+                email=self.user.email,
+                first_name=self.user.first_name,
+                subscription_name=self.user_subscription.subscription.name,
+                amount=str(self.amount),
+                currency=self.currency,
+                reference=self.client_reference,
+            )
 
     def mark_as_failed(self, error_message='', callback_data=None):
         """Mark transaction as failed"""
@@ -532,3 +502,131 @@ class PaymentTransaction(TimestampedModel):
         if callback_data:
             self.callback_data = callback_data
         self.save()
+
+        # Count failures against the mandate for automated direct-debit charges.
+        if self.direct_debit_id:
+            self.direct_debit.register_failed_charge()
+
+
+class DirectDebit(TimestampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='direct_debits'
+    )
+    wallet = models.ForeignKey(MobileWallet, on_delete=models.PROTECT, related_name='direct_debits')
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Amount to be debited from the wallet"
+    )
+    period_type = models.CharField(choices=AutoDebitPeriodTypes.choices(), max_length=20, default=AutoDebitPeriodTypes.MONTHLY.value)
+    user_subscription = models.ForeignKey(UserSubscription, on_delete=models.PROTECT, related_name='direct_debits')
+    next_payment_date = models.DateField(null=True, blank=True, help_text="Next payment date for this direct debit")
+    previous_payment_date = models.DateField(null=True, blank=True, help_text="Previous payment date for this direct debit")
+    hubtel_preapproval_id = models.CharField(max_length=255, blank=True)
+    initiate_client_reference = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    otp_prefix = models.CharField(max_length=10, blank=True)
+    approval_status = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    consecutive_failed_charges = models.PositiveIntegerField(
+        default=0,
+        help_text="Consecutive failed charge attempts; the mandate is deactivated at the cap."
+    )
+
+    MAX_CONSECUTIVE_FAILURES = 3
+
+    class Meta:
+        db_table = 'direct_debits'
+        ordering = ['-created_at']
+        verbose_name = 'Direct Debit'
+        verbose_name_plural = 'Direct Debits'
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['approval_status', 'next_payment_date']),
+            models.Index(fields=['next_payment_date']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user_subscription'],
+                condition=models.Q(is_active=True),
+                name='uniq_active_dd_per_user_sub',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.amount} ({self.period_type})"
+
+    def clean(self):
+        super().clean()
+        # the wallet must belong to this user.
+        if self.wallet_id and self.user_id and self.wallet.user_id != self.user_id:
+            raise ValidationError({'wallet': 'Wallet does not belong to this user.'})
+
+        # the user subscription must belong to this user.
+        if (self.user_id and self.user_subscription_id
+                and self.user_subscription.user_id != self.user_id):
+            raise ValidationError({'user_subscription': 'User subscription does not belong to this user.'})
+
+        # the subscription must be in the user's organization.
+        if (self.user_id and self.user_subscription_id
+                and self.user.organization_id
+                and self.user_subscription.subscription.organization_id != self.user.organization_id):
+            raise ValidationError({'user_subscription': 'Subscription belongs to a different organization.'})
+
+        # Wallet gating — only at creation. An existing debit must not break
+        # simply because its wallet was later deactivated (the charge-time
+        # check belongs to the future execution flow).
+        if self._state.adding and self.wallet_id:
+            if not self.wallet.is_active or self.wallet.verified_at is None:
+                raise ValidationError({'wallet': 'Wallet must be active and verified.'})
+
+        # At most one active mandate per user subscription (friendly error
+        # ahead of the DB partial unique constraint).
+        if self._state.adding and self.user_subscription_id and self.is_active:
+            if DirectDebit.objects.filter(
+                user_subscription_id=self.user_subscription_id, is_active=True
+            ).exists():
+                raise ValidationError(
+                    {'user_subscription': 'An active direct debit already exists for this subscription.'}
+                )
+
+        if self.amount is not None and self.amount <= 0:
+            raise ValidationError({'amount': 'Amount must be greater than zero.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def mark_approved(self):
+        """Mark the mandate approved and seed the first scheduled payment date."""
+        self.approval_status = True
+        self.next_payment_date = AutoDebitPeriodTypes.next_date(self.period_type)
+        self.save(update_fields=['approval_status', 'next_payment_date', 'updated_at'])
+
+    def mark_charged(self):
+        """Advance the schedule after a confirmed charge and reset the failure streak."""
+        from django.utils import timezone
+
+        self.previous_payment_date = self.next_payment_date or timezone.now().date()
+        self.next_payment_date = AutoDebitPeriodTypes.next_date(self.period_type)
+        self.consecutive_failed_charges = 0
+        self.save(update_fields=[
+            'previous_payment_date', 'next_payment_date',
+            'consecutive_failed_charges', 'updated_at',
+        ])
+
+    def register_failed_charge(self):
+        """Record a failed charge; deactivate the mandate once it hits the failure cap."""
+        self.consecutive_failed_charges += 1
+        if self.consecutive_failed_charges >= self.MAX_CONSECUTIVE_FAILURES:
+            self.is_active = False
+        self.save(update_fields=['consecutive_failed_charges', 'is_active', 'updated_at'])
+
+    def deactivate(self):
+        """Deactivate the mandate locally without deleting its audit trail."""
+        if not self.is_active:
+            return
+        self.is_active = False
+        self.save(update_fields=['is_active', 'updated_at'])
